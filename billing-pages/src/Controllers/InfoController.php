@@ -10,13 +10,14 @@ use BillingPages\Controllers\BaseController;
 class InfoController extends BaseController
 {
     /**
-     * Redirect to help page (README.md)
+     * Show help page
      */
     public function help(): void
     {
-        // Redirect to README.md in the project root
-        header('Location: /README.md');
-        exit;
+        $this->render('help/index', [
+            'page_title' => $this->localization->get('help'),
+            'scripts' => []
+        ]);
     }
 
     /**
@@ -25,7 +26,7 @@ class InfoController extends BaseController
     public function contact(): void
     {
         // Redirect to external contact page
-        header('Location: https://www.dominic-bilke.de/en/imprint');
+        header('Location: https://www.dominic-bilke.de/en/contact');
         exit;
     }
 

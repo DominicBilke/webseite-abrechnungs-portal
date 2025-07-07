@@ -28,11 +28,11 @@
                         <!-- Language Switcher -->
                         <div class="text-center mb-4">
                             <div class="btn-group" role="group">
-                                <a href="?lang=de" class="btn btn-outline-secondary btn-sm <?= $locale === 'de' ? 'active' : '' ?>">
-                                    Deutsch
+                                <a href="<?= $getLanguageUrl('de') ?>" class="btn btn-outline-secondary btn-sm <?= $locale === 'de' ? 'active' : '' ?>">
+                                    <?= $localization->get('language_de') ?>
                                 </a>
-                                <a href="?lang=en" class="btn btn-outline-secondary btn-sm <?= $locale === 'en' ? 'active' : '' ?>">
-                                    English
+                                <a href="<?= $getLanguageUrl('en') ?>" class="btn btn-outline-secondary btn-sm <?= $locale === 'en' ? 'active' : '' ?>">
+                                    <?= $localization->get('language_en') ?>
                                 </a>
                             </div>
                         </div>

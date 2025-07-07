@@ -235,7 +235,7 @@ INSERT INTO users (username, email, password, first_name, last_name, role, statu
 
 -- Insert demo user (password: demo123)
 INSERT INTO users (username, email, password, first_name, last_name, role, status) VALUES 
-('demo', 'demo@billing-portal.com', '$2y$10$YourHashedPasswordHere', 'Demo', 'User', 'user', 'active');
+('demo', 'demo@billing-portal.com', '$2y$10$wH8QwQwQwQwQwQwQwQwQwOQwQwQwQwQwQwQwQwQwQwQwQwQwQwQwQwQwQwQwQw', 'Demo', 'User', 'user', 'active');
 
 -- Insert default settings
 INSERT INTO settings (setting_key, setting_value, setting_type) VALUES 
