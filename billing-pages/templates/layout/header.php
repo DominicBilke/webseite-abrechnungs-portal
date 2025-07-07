@@ -109,8 +109,8 @@
                                 <?= $localization->getLocaleName($locale) ?>
                             </a>
                             <ul class="dropdown-menu">
-                                <li><a class="dropdown-item" href="?lang=de"><?= $localization->get('language_de') ?></a></li>
-                                <li><a class="dropdown-item" href="?lang=en"><?= $localization->get('language_en') ?></a></li>
+                                <li><a class="dropdown-item" href="<?= $getLanguageUrl('de') ?>"><?= $localization->get('language_de') ?></a></li>
+                                <li><a class="dropdown-item" href="<?= $getLanguageUrl('en') ?>"><?= $localization->get('language_en') ?></a></li>
                             </ul>
                         </li>
                         <li class="nav-item dropdown">

@@ -42,6 +42,9 @@ abstract class BaseController
         // Extract variables for template
         extract($data);
         
+        // Make helper functions available in templates
+        $getLanguageUrl = [$this, 'getLanguageUrl'];
+        
         // Include the template
         include __DIR__ . "/../../templates/{$template}.php";
     }
@@ -133,5 +136,27 @@ abstract class BaseController
         }
         
         return $sanitized;
+    }
+
+    /**
+     * Generate language URL with current page preserved
+     */
+    protected function getLanguageUrl(string $locale): string
+    {
+        $currentUrl = $_SERVER['REQUEST_URI'];
+        $parsedUrl = parse_url($currentUrl);
+        $path = $parsedUrl['path'] ?? '/';
+        $query = $parsedUrl['query'] ?? '';
+        
+        // Parse existing query parameters
+        parse_str($query, $params);
+        
+        // Update or add language parameter
+        $params['lang'] = $locale;
+        
+        // Rebuild query string
+        $newQuery = http_build_query($params);
+        
+        return $path . ($newQuery ? '?' . $newQuery : '');
     }
 } 

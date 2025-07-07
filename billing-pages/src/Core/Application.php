@@ -10,6 +10,7 @@ use BillingPages\Controllers\MoneyController;
 use BillingPages\Controllers\BillingController;
 use BillingPages\Controllers\ToursController;
 use BillingPages\Controllers\TasksController;
+use BillingPages\Controllers\ProfileController;
 use BillingPages\Core\Router;
 use BillingPages\Core\Database;
 use BillingPages\Core\Session;
@@ -116,6 +117,13 @@ class Application
         $this->router->post('/tasks/edit/{id}', [TasksController::class, 'update']);
         $this->router->post('/tasks/delete/{id}', [TasksController::class, 'delete']);
         $this->router->get('/tasks/complete/{id}', [TasksController::class, 'complete']);
+
+        // Profile routes
+        $this->router->get('/profile', [ProfileController::class, 'index']);
+        $this->router->get('/profile/edit', [ProfileController::class, 'edit']);
+        $this->router->post('/profile/edit', [ProfileController::class, 'update']);
+        $this->router->get('/profile/change-password', [ProfileController::class, 'changePassword']);
+        $this->router->post('/profile/change-password', [ProfileController::class, 'updatePassword']);
 
         // User management routes (placeholder for future implementation)
         $this->router->get('/users', [DashboardController::class, 'redirectToDashboard']);
