@@ -39,7 +39,7 @@ define('DEFAULT_LOCALE', $_ENV['DEFAULT_LOCALE'] ?? 'de');
 date_default_timezone_set('Europe/Berlin');
 
 // Set session configuration
-ini_set('session.cookie_httponly', 1);
-ini_set('session.cookie_secure', isset($_SERVER['HTTPS']));
-ini_set('session.cookie_samesite', 'Strict');
-ini_set('session.gc_maxlifetime', SESSION_LIFETIME); 
+@ini_set('session.cookie_httponly', 1);
+@ini_set('session.cookie_secure', isset($_SERVER['HTTPS']));
+@ini_set('session.cookie_samesite', 'Strict');
+@ini_set('session.gc_maxlifetime', SESSION_LIFETIME); 

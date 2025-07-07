@@ -1,9 +1,22 @@
 # Billing Portal - Apache Configuration
 
-# Enable URL rewriting
 RewriteEngine On
 
-# Security headers
+# Handle Authorization Header
+RewriteCond %{HTTP:Authorization} .
+RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+# Redirect Trailing Slashes If Not A Folder...
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} (.+)/$
+RewriteRule ^ %1 [L,R=301]
+
+# Send Requests To Front Controller...
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^ index.php [L]
+
+# Security Headers
 <IfModule mod_headers.c>
     Header always set X-Content-Type-Options nosniff
     Header always set X-Frame-Options DENY
@@ -12,8 +25,11 @@ RewriteEngine On
     Header always set Permissions-Policy "geolocation=(), microphone=(), camera=()"
 </IfModule>
 
-# Prevent access to sensitive files
-<FilesMatch "\.(env|log|sql|md|gitignore|gitattributes)$">
+# Disable directory browsing
+Options -Indexes
+
+# Protect against access to sensitive files
+<FilesMatch "\.(env|log|sql|md|gitignore|gitattributes|txt)$">
     Order allow,deny
     Deny from all
 </FilesMatch>
@@ -38,11 +54,6 @@ RewriteRule ^locales/ - [F,L]
 
 # Prevent access to database directory
 RewriteRule ^database/ - [F,L]
-
-# URL rewriting for the application
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ index.php [QSA,L]
 
 # Compress text files
 <IfModule mod_deflate.c>

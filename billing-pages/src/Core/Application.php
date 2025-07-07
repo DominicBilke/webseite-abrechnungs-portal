@@ -8,9 +8,8 @@ use BillingPages\Controllers\CompanyController;
 use BillingPages\Controllers\WorkController;
 use BillingPages\Controllers\MoneyController;
 use BillingPages\Controllers\BillingController;
-use BillingPages\Controllers\UserController;
-use BillingPages\Controllers\TourController;
-use BillingPages\Controllers\TaskController;
+use BillingPages\Controllers\ToursController;
+use BillingPages\Controllers\TasksController;
 use BillingPages\Core\Router;
 use BillingPages\Core\Database;
 use BillingPages\Core\Session;
@@ -86,21 +85,37 @@ class Application
 
         // Billing routes
         $this->router->get('/billing', [BillingController::class, 'index']);
-        $this->router->get('/billing/all', [BillingController::class, 'all']);
-        $this->router->get('/billing/generate/{type}/{id}', [BillingController::class, 'generate']);
-        $this->router->get('/billing/download/{id}', [BillingController::class, 'download']);
+        $this->router->get('/billing/overview', [BillingController::class, 'overview']);
+        $this->router->get('/billing/create', [BillingController::class, 'showCreate']);
+        $this->router->post('/billing/create', [BillingController::class, 'create']);
         $this->router->get('/billing/view/{id}', [BillingController::class, 'view']);
-        $this->router->get('/billing/edit/{id}', [BillingController::class, 'edit']);
-        $this->router->post('/billing/edit/{id}', [BillingController::class, 'update']);
+        $this->router->get('/billing/pdf/{id}', [BillingController::class, 'generatePdf']);
+        $this->router->get('/billing/send/{id}', [BillingController::class, 'sendEmail']);
+        $this->router->get('/billing/mark-paid/{id}', [BillingController::class, 'markPaid']);
         $this->router->post('/billing/delete/{id}', [BillingController::class, 'delete']);
-        $this->router->get('/billing/data/{type}', [BillingController::class, 'getData']);
-        $this->router->post('/billing/data/{type}', [BillingController::class, 'saveData']);
 
-        // Tour routes (placeholder for future implementation)
-        $this->router->get('/tours', [DashboardController::class, 'redirectToDashboard']);
+        // Tours routes
+        $this->router->get('/tours', [ToursController::class, 'index']);
+        $this->router->get('/tours/add', [ToursController::class, 'showAdd']);
+        $this->router->post('/tours/add', [ToursController::class, 'add']);
+        $this->router->get('/tours/overview', [ToursController::class, 'overview']);
+        $this->router->get('/tours/reports', [ToursController::class, 'reports']);
+        $this->router->get('/tours/view/{id}', [ToursController::class, 'view']);
+        $this->router->get('/tours/edit/{id}', [ToursController::class, 'edit']);
+        $this->router->post('/tours/edit/{id}', [ToursController::class, 'update']);
+        $this->router->post('/tours/delete/{id}', [ToursController::class, 'delete']);
 
-        // Task routes (placeholder for future implementation)
-        $this->router->get('/tasks', [DashboardController::class, 'redirectToDashboard']);
+        // Tasks routes
+        $this->router->get('/tasks', [TasksController::class, 'index']);
+        $this->router->get('/tasks/add', [TasksController::class, 'showAdd']);
+        $this->router->post('/tasks/add', [TasksController::class, 'add']);
+        $this->router->get('/tasks/overview', [TasksController::class, 'overview']);
+        $this->router->get('/tasks/reports', [TasksController::class, 'reports']);
+        $this->router->get('/tasks/view/{id}', [TasksController::class, 'view']);
+        $this->router->get('/tasks/edit/{id}', [TasksController::class, 'edit']);
+        $this->router->post('/tasks/edit/{id}', [TasksController::class, 'update']);
+        $this->router->post('/tasks/delete/{id}', [TasksController::class, 'delete']);
+        $this->router->get('/tasks/complete/{id}', [TasksController::class, 'complete']);
 
         // User management routes (placeholder for future implementation)
         $this->router->get('/users', [DashboardController::class, 'redirectToDashboard']);
@@ -114,6 +129,9 @@ class Application
         $this->router->post('/api/company/search', [CompanyController::class, 'search']);
         $this->router->post('/api/work/search', [WorkController::class, 'search']);
         $this->router->post('/api/money/search', [MoneyController::class, 'search']);
+        $this->router->post('/api/tours/search', [ToursController::class, 'search']);
+        $this->router->post('/api/tasks/search', [TasksController::class, 'search']);
+        $this->router->post('/api/billing/search', [BillingController::class, 'search']);
     }
 
     /**
