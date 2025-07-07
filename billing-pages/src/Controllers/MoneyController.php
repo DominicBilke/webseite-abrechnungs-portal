@@ -310,4 +310,157 @@ class MoneyController
         extract($data);
         include __DIR__ . "/../../templates/{$template}.php";
     }
+
+    /**
+     * Show money entry details
+     */
+    public function view(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get money entry details
+        $sql = "SELECT * FROM money_entries WHERE id = ? AND user_id = ?";
+        $money = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$money) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /money/overview');
+            exit;
+        }
+
+        $this->render('money/view', [
+            'title' => $money['description'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'money' => $money
+        ]);
+    }
+
+    /**
+     * Show edit money form
+     */
+    public function edit(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get money entry details
+        $sql = "SELECT * FROM money_entries WHERE id = ? AND user_id = ?";
+        $money = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$money) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /money/overview');
+            exit;
+        }
+
+        $this->render('money/edit', [
+            'title' => $this->localization->get('edit') . ' ' . $this->localization->get('money'),
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'money' => $money
+        ]);
+    }
+
+    /**
+     * Update money entry
+     */
+    public function update(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Validate input
+        $amount = (float)($_POST['amount'] ?? 0);
+        $currency = trim($_POST['currency'] ?? 'EUR');
+        $description = trim($_POST['description'] ?? '');
+        $paymentMethod = trim($_POST['payment_method'] ?? '');
+        $paymentDate = trim($_POST['payment_date'] ?? date('Y-m-d'));
+        $paymentStatus = trim($_POST['payment_status'] ?? 'pending');
+        $category = trim($_POST['category'] ?? '');
+        $reference = trim($_POST['reference'] ?? '');
+        $notes = trim($_POST['notes'] ?? '');
+
+        if ($amount == 0 || empty($description)) {
+            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('amount') . '/' . $this->localization->get('description')]));
+            header('Location: /money/edit/' . $id);
+            exit;
+        }
+
+        // Update money entry
+        $sql = "UPDATE money_entries SET amount = ?, currency = ?, description = ?, payment_method = ?, 
+                payment_date = ?, payment_status = ?, category = ?, reference = ?, notes = ?, 
+                updated_at = NOW() WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [
+                $amount, $currency, $description, $paymentMethod, $paymentDate,
+                $paymentStatus, $category, $reference, $notes, $id, $userId
+            ]);
+
+            $this->session->setFlash('success', $this->localization->get('success_updated'));
+            header('Location: /money/overview');
+            exit;
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_update'));
+            header('Location: /money/edit/' . $id);
+            exit;
+        }
+    }
+
+    /**
+     * Delete money entry
+     */
+    public function delete(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Check if money entry exists and belongs to user
+        $sql = "SELECT id FROM money_entries WHERE id = ? AND user_id = ?";
+        $money = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$money) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /money/overview');
+            exit;
+        }
+
+        // Delete money entry
+        $sql = "DELETE FROM money_entries WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [$id, $userId]);
+            $this->session->setFlash('success', $this->localization->get('success_deleted'));
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_delete'));
+        }
+        
+        header('Location: /money/overview');
+        exit;
+    }
+
+    /**
+     * Search money entries via API
+     */
+    public function search(): void
+    {
+        header('Content-Type: application/json');
+        
+        $userId = $this->session->getUserId();
+        $query = trim($_POST['query'] ?? '');
+        
+        if (empty($query)) {
+            echo json_encode(['success' => true, 'data' => []]);
+            return;
+        }
+
+        $sql = "SELECT id, description, amount, payment_date, category, payment_status 
+                FROM money_entries 
+                WHERE user_id = ? AND (description LIKE ? OR category LIKE ? OR reference LIKE ?)
+                ORDER BY payment_date DESC 
+                LIMIT 10";
+        
+        $searchTerm = "%{$query}%";
+        $moneyEntries = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        
+        echo json_encode(['success' => true, 'data' => $moneyEntries]);
+    }
 } 

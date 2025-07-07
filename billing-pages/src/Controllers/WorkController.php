@@ -306,4 +306,159 @@ class WorkController
         extract($data);
         include __DIR__ . "/../../templates/{$template}.php";
     }
+
+    /**
+     * Show work entry details
+     */
+    public function view(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get work entry details
+        $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ?";
+        $work = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$work) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /work/overview');
+            exit;
+        }
+
+        $this->render('work/view', [
+            'title' => $work['work_description'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'work' => $work
+        ]);
+    }
+
+    /**
+     * Show edit work form
+     */
+    public function edit(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get work entry details
+        $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ?";
+        $work = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$work) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /work/overview');
+            exit;
+        }
+
+        $this->render('work/edit', [
+            'title' => $this->localization->get('edit') . ' ' . $this->localization->get('work'),
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'work' => $work
+        ]);
+    }
+
+    /**
+     * Update work entry
+     */
+    public function update(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Validate input
+        $workDate = trim($_POST['work_date'] ?? '');
+        $workHours = (float)($_POST['work_hours'] ?? 0);
+        $workDescription = trim($_POST['work_description'] ?? '');
+        $workType = trim($_POST['work_type'] ?? '');
+        $workRate = (float)($_POST['work_rate'] ?? 0);
+        $workProject = trim($_POST['work_project'] ?? '');
+        $workClient = trim($_POST['work_client'] ?? '');
+        $status = trim($_POST['status'] ?? 'pending');
+
+        if (empty($workDate) || $workHours <= 0) {
+            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('work_date') . '/' . $this->localization->get('work_hours')]));
+            header('Location: /work/edit/' . $id);
+            exit;
+        }
+
+        // Calculate total
+        $workTotal = $workHours * $workRate;
+
+        // Update work entry
+        $sql = "UPDATE work_entries SET work_date = ?, work_hours = ?, work_description = ?, 
+                work_type = ?, work_rate = ?, work_total = ?, work_project = ?, work_client = ?, 
+                status = ?, updated_at = NOW() WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [
+                $workDate, $workHours, $workDescription, $workType, $workRate,
+                $workTotal, $workProject, $workClient, $status, $id, $userId
+            ]);
+
+            $this->session->setFlash('success', $this->localization->get('success_updated'));
+            header('Location: /work/overview');
+            exit;
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_update'));
+            header('Location: /work/edit/' . $id);
+            exit;
+        }
+    }
+
+    /**
+     * Delete work entry
+     */
+    public function delete(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Check if work entry exists and belongs to user
+        $sql = "SELECT id FROM work_entries WHERE id = ? AND user_id = ?";
+        $work = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$work) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /work/overview');
+            exit;
+        }
+
+        // Delete work entry
+        $sql = "DELETE FROM work_entries WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [$id, $userId]);
+            $this->session->setFlash('success', $this->localization->get('success_deleted'));
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_delete'));
+        }
+        
+        header('Location: /work/overview');
+        exit;
+    }
+
+    /**
+     * Search work entries via API
+     */
+    public function search(): void
+    {
+        header('Content-Type: application/json');
+        
+        $userId = $this->session->getUserId();
+        $query = trim($_POST['query'] ?? '');
+        
+        if (empty($query)) {
+            echo json_encode(['success' => true, 'data' => []]);
+            return;
+        }
+
+        $sql = "SELECT id, work_description, work_hours, work_total, work_date, work_project 
+                FROM work_entries 
+                WHERE user_id = ? AND (work_description LIKE ? OR work_project LIKE ? OR work_client LIKE ?)
+                ORDER BY work_date DESC 
+                LIMIT 10";
+        
+        $searchTerm = "%{$query}%";
+        $workEntries = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        
+        echo json_encode(['success' => true, 'data' => $workEntries]);
+    }
 } 

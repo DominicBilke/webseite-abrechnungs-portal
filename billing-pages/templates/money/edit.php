@@ -10,13 +10,13 @@ $session = new BillingPages\Core\Session();
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-0">
-                <i class="bi bi-plus-circle me-2"></i>
-                <?= $localization->get('add') ?> <?= $localization->get('money') ?>
+                <i class="bi bi-pencil me-2"></i>
+                <?= $localization->get('edit') ?> <?= $localization->get('money') ?>
             </h1>
-            <p class="text-muted"><?= $localization->get('add') ?> <?= $localization->get('new') ?> <?= $localization->get('money') ?> <?= $localization->get('entry') ?></p>
+            <p class="text-muted"><?= $localization->get('update') ?> <?= $localization->get('money') ?> <?= $localization->get('entry') ?> <?= $localization->get('information') ?></p>
         </div>
         <div>
-            <a href="/money/overview" class="btn btn-outline-secondary">
+            <a href="/money/view/<?= $money['id'] ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>
                 <?= $localization->get('back') ?>
             </a>
@@ -29,11 +29,11 @@ $session = new BillingPages\Core\Session();
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-primary">
                         <i class="bi bi-cash-coin me-2"></i>
-                        <?= $localization->get('new') ?> <?= $localization->get('money') ?> <?= $localization->get('entry') ?>
+                        <?= htmlspecialchars($money['description']) ?>
                     </h6>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="/money/add" id="moneyForm">
+                    <form method="POST" action="/money/update/<?= $money['id'] ?>" id="moneyForm">
                         <div class="row">
                             <!-- Money Information -->
                             <div class="col-md-6">
@@ -45,12 +45,12 @@ $session = new BillingPages\Core\Session();
                                     </label>
                                     <div class="input-group">
                                         <input type="number" class="form-control" id="amount" name="amount" 
-                                               value="0.00" step="0.01" required>
+                                               value="<?= $money['amount'] ?>" step="0.01" required>
                                         <select class="form-select" id="currency" name="currency" style="max-width: 100px;">
-                                            <option value="EUR" selected>EUR</option>
-                                            <option value="USD">USD</option>
-                                            <option value="GBP">GBP</option>
-                                            <option value="CHF">CHF</option>
+                                            <option value="EUR" <?= $money['currency'] === 'EUR' ? 'selected' : '' ?>>EUR</option>
+                                            <option value="USD" <?= $money['currency'] === 'USD' ? 'selected' : '' ?>>USD</option>
+                                            <option value="GBP" <?= $money['currency'] === 'GBP' ? 'selected' : '' ?>>GBP</option>
+                                            <option value="CHF" <?= $money['currency'] === 'CHF' ? 'selected' : '' ?>>CHF</option>
                                         </select>
                                     </div>
                                     <div class="form-text">
@@ -63,7 +63,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('description') ?> <span class="text-danger">*</span>
                                     </label>
                                     <textarea class="form-control" id="description" name="description" 
-                                              rows="3" required placeholder="<?= $localization->get('describe_transaction') ?>"></textarea>
+                                              rows="3" required><?= htmlspecialchars($money['description']) ?></textarea>
                                 </div>
 
                                 <div class="mb-3">
@@ -71,7 +71,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('payment_date') ?>
                                     </label>
                                     <input type="date" class="form-control" id="payment_date" name="payment_date" 
-                                           value="<?= date('Y-m-d') ?>">
+                                           value="<?= $money['payment_date'] ?>">
                                 </div>
 
                                 <div class="mb-3">
@@ -80,12 +80,24 @@ $session = new BillingPages\Core\Session();
                                     </label>
                                     <select class="form-select" id="payment_method" name="payment_method">
                                         <option value=""><?= $localization->get('select_payment_method') ?></option>
-                                        <option value="bank_transfer"><?= $localization->get('bank_transfer') ?></option>
-                                        <option value="credit_card"><?= $localization->get('credit_card') ?></option>
-                                        <option value="paypal"><?= $localization->get('paypal') ?></option>
-                                        <option value="cash"><?= $localization->get('cash') ?></option>
-                                        <option value="check"><?= $localization->get('check') ?></option>
-                                        <option value="other"><?= $localization->get('other') ?></option>
+                                        <option value="bank_transfer" <?= $money['payment_method'] === 'bank_transfer' ? 'selected' : '' ?>>
+                                            <?= $localization->get('bank_transfer') ?>
+                                        </option>
+                                        <option value="credit_card" <?= $money['payment_method'] === 'credit_card' ? 'selected' : '' ?>>
+                                            <?= $localization->get('credit_card') ?>
+                                        </option>
+                                        <option value="paypal" <?= $money['payment_method'] === 'paypal' ? 'selected' : '' ?>>
+                                            <?= $localization->get('paypal') ?>
+                                        </option>
+                                        <option value="cash" <?= $money['payment_method'] === 'cash' ? 'selected' : '' ?>>
+                                            <?= $localization->get('cash') ?>
+                                        </option>
+                                        <option value="check" <?= $money['payment_method'] === 'check' ? 'selected' : '' ?>>
+                                            <?= $localization->get('check') ?>
+                                        </option>
+                                        <option value="other" <?= $money['payment_method'] === 'other' ? 'selected' : '' ?>>
+                                            <?= $localization->get('other') ?>
+                                        </option>
                                     </select>
                                 </div>
                             </div>
@@ -100,17 +112,39 @@ $session = new BillingPages\Core\Session();
                                     </label>
                                     <select class="form-select" id="category" name="category">
                                         <option value=""><?= $localization->get('select_category') ?></option>
-                                        <option value="salary"><?= $localization->get('salary') ?></option>
-                                        <option value="freelance"><?= $localization->get('freelance') ?></option>
-                                        <option value="consulting"><?= $localization->get('consulting') ?></option>
-                                        <option value="rent"><?= $localization->get('rent') ?></option>
-                                        <option value="utilities"><?= $localization->get('utilities') ?></option>
-                                        <option value="groceries"><?= $localization->get('groceries') ?></option>
-                                        <option value="transportation"><?= $localization->get('transportation') ?></option>
-                                        <option value="entertainment"><?= $localization->get('entertainment') ?></option>
-                                        <option value="health"><?= $localization->get('health') ?></option>
-                                        <option value="education"><?= $localization->get('education') ?></option>
-                                        <option value="other"><?= $localization->get('other') ?></option>
+                                        <option value="salary" <?= $money['category'] === 'salary' ? 'selected' : '' ?>>
+                                            <?= $localization->get('salary') ?>
+                                        </option>
+                                        <option value="freelance" <?= $money['category'] === 'freelance' ? 'selected' : '' ?>>
+                                            <?= $localization->get('freelance') ?>
+                                        </option>
+                                        <option value="consulting" <?= $money['category'] === 'consulting' ? 'selected' : '' ?>>
+                                            <?= $localization->get('consulting') ?>
+                                        </option>
+                                        <option value="rent" <?= $money['category'] === 'rent' ? 'selected' : '' ?>>
+                                            <?= $localization->get('rent') ?>
+                                        </option>
+                                        <option value="utilities" <?= $money['category'] === 'utilities' ? 'selected' : '' ?>>
+                                            <?= $localization->get('utilities') ?>
+                                        </option>
+                                        <option value="groceries" <?= $money['category'] === 'groceries' ? 'selected' : '' ?>>
+                                            <?= $localization->get('groceries') ?>
+                                        </option>
+                                        <option value="transportation" <?= $money['category'] === 'transportation' ? 'selected' : '' ?>>
+                                            <?= $localization->get('transportation') ?>
+                                        </option>
+                                        <option value="entertainment" <?= $money['category'] === 'entertainment' ? 'selected' : '' ?>>
+                                            <?= $localization->get('entertainment') ?>
+                                        </option>
+                                        <option value="health" <?= $money['category'] === 'health' ? 'selected' : '' ?>>
+                                            <?= $localization->get('health') ?>
+                                        </option>
+                                        <option value="education" <?= $money['category'] === 'education' ? 'selected' : '' ?>>
+                                            <?= $localization->get('education') ?>
+                                        </option>
+                                        <option value="other" <?= $money['category'] === 'other' ? 'selected' : '' ?>>
+                                            <?= $localization->get('other') ?>
+                                        </option>
                                     </select>
                                 </div>
 
@@ -119,9 +153,15 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('payment_status') ?>
                                     </label>
                                     <select class="form-select" id="payment_status" name="payment_status">
-                                        <option value="pending"><?= $localization->get('pending') ?></option>
-                                        <option value="completed"><?= $localization->get('completed') ?></option>
-                                        <option value="cancelled"><?= $localization->get('cancelled') ?></option>
+                                        <option value="pending" <?= $money['payment_status'] === 'pending' ? 'selected' : '' ?>>
+                                            <?= $localization->get('pending') ?>
+                                        </option>
+                                        <option value="completed" <?= $money['payment_status'] === 'completed' ? 'selected' : '' ?>>
+                                            <?= $localization->get('completed') ?>
+                                        </option>
+                                        <option value="cancelled" <?= $money['payment_status'] === 'cancelled' ? 'selected' : '' ?>>
+                                            <?= $localization->get('cancelled') ?>
+                                        </option>
                                     </select>
                                 </div>
 
@@ -130,7 +170,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('reference') ?>
                                     </label>
                                     <input type="text" class="form-control" id="reference" name="reference" 
-                                           placeholder="<?= $localization->get('transaction_reference') ?>">
+                                           value="<?= htmlspecialchars($money['reference']) ?>">
                                     <div class="form-text"><?= $localization->get('reference_help') ?></div>
                                 </div>
 
@@ -139,7 +179,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('notes') ?>
                                     </label>
                                     <textarea class="form-control" id="notes" name="notes" 
-                                              rows="4" placeholder="<?= $localization->get('additional_notes') ?>"></textarea>
+                                              rows="4"><?= htmlspecialchars($money['notes']) ?></textarea>
                                 </div>
                             </div>
                         </div>
@@ -147,47 +187,18 @@ $session = new BillingPages\Core\Session();
                         <!-- Amount Preview -->
                         <div class="row">
                             <div class="col-12">
-                                <div class="alert alert-info">
+                                <div class="alert alert-<?= $money['amount'] >= 0 ? 'success' : 'danger' ?>">
                                     <div class="row align-items-center">
                                         <div class="col-md-6">
                                             <strong><?= $localization->get('amount_preview') ?>:</strong>
-                                            <span id="amountPreview" class="fs-5">0.00 EUR</span>
+                                            <span id="amountPreview" class="fs-5">
+                                                <?= ($money['amount'] >= 0 ? '+' : '') . number_format($money['amount'], 2) ?> <?= $money['currency'] ?>
+                                            </span>
                                         </div>
                                         <div class="col-md-6 text-end">
                                             <small class="text-muted">
-                                                <span id="transactionType"><?= $localization->get('income') ?></span>
+                                                <?= $money['amount'] >= 0 ? $localization->get('income') : $localization->get('expense') ?>
                                             </small>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Quick Actions -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card border-0 bg-light">
-                                    <div class="card-body">
-                                        <h6 class="mb-3"><?= $localization->get('quick_actions') ?></h6>
-                                        <div class="d-flex gap-2 flex-wrap">
-                                            <button type="button" class="btn btn-outline-success btn-sm" onclick="setAmount(100)">
-                                                100 €
-                                            </button>
-                                            <button type="button" class="btn btn-outline-success btn-sm" onclick="setAmount(500)">
-                                                500 €
-                                            </button>
-                                            <button type="button" class="btn btn-outline-success btn-sm" onclick="setAmount(1000)">
-                                                1000 €
-                                            </button>
-                                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="setAmount(-50)">
-                                                -50 €
-                                            </button>
-                                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="setAmount(-100)">
-                                                -100 €
-                                            </button>
-                                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="setAmount(-500)">
-                                                -500 €
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
@@ -197,7 +208,7 @@ $session = new BillingPages\Core\Session();
                         <!-- Form Actions -->
                         <div class="d-flex justify-content-between">
                             <div>
-                                <a href="/money/overview" class="btn btn-outline-secondary">
+                                <a href="/money/view/<?= $money['id'] ?>" class="btn btn-outline-secondary">
                                     <i class="bi bi-arrow-left me-1"></i>
                                     <?= $localization->get('cancel') ?>
                                 </a>
@@ -205,7 +216,7 @@ $session = new BillingPages\Core\Session();
                             <div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-check-circle me-1"></i>
-                                    <?= $localization->get('save') ?> <?= $localization->get('money') ?>
+                                    <?= $localization->get('save') ?> <?= $localization->get('changes') ?>
                                 </button>
                             </div>
                         </div>
@@ -217,12 +228,6 @@ $session = new BillingPages\Core\Session();
 </div>
 
 <script>
-// Quick action functions
-function setAmount(amount) {
-    document.getElementById('amount').value = amount;
-    updateAmountPreview();
-}
-
 // Form validation and functionality
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('moneyForm');
@@ -230,7 +235,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const currencySelect = document.getElementById('currency');
     const descriptionInput = document.getElementById('description');
     const amountPreviewSpan = document.getElementById('amountPreview');
-    const transactionTypeSpan = document.getElementById('transactionType');
 
     // Real-time amount preview
     function updateAmountPreview() {
@@ -239,10 +243,9 @@ document.addEventListener('DOMContentLoaded', function() {
         const sign = amount >= 0 ? '+' : '';
         amountPreviewSpan.textContent = sign + amount.toFixed(2) + ' ' + currency;
         
-        // Update alert color and transaction type
+        // Update alert color
         const alert = amountPreviewSpan.closest('.alert');
         alert.className = 'alert alert-' + (amount >= 0 ? 'success' : 'danger');
-        transactionTypeSpan.textContent = amount >= 0 ? '<?= $localization->get('income') ?>' : '<?= $localization->get('expense') ?>';
     }
 
     amountInput.addEventListener('input', updateAmountPreview);
@@ -307,7 +310,7 @@ document.addEventListener('DOMContentLoaded', function() {
             draftData[key] = value;
         }
         
-        localStorage.setItem('money_draft_new', JSON.stringify(draftData));
+        localStorage.setItem('money_draft_<?= $money['id'] ?>', JSON.stringify(draftData));
         
         // Show auto-save indicator
         const indicator = document.createElement('div');
@@ -327,7 +330,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Load draft on page load
-    const savedDraft = localStorage.getItem('money_draft_new');
+    const savedDraft = localStorage.getItem('money_draft_<?= $money['id'] ?>');
     if (savedDraft) {
         const draftData = JSON.parse(savedDraft);
         Object.keys(draftData).forEach(key => {
@@ -341,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Clear draft after successful save
     form.addEventListener('submit', function() {
-        localStorage.removeItem('money_draft_new');
+        localStorage.removeItem('money_draft_<?= $money['id'] ?>');
     });
 
     // Initialize amount preview
@@ -359,14 +362,7 @@ document.addEventListener('keydown', function(e) {
     // Ctrl/Cmd + Z to cancel
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
-        window.location.href = '/money/overview';
-    }
-    
-    // Number keys for quick amounts
-    if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey) {
-        const amount = parseInt(e.key) * 100;
-        document.getElementById('amount').value = amount;
-        updateAmountPreview();
+        window.location.href = '/money/view/<?= $money['id'] ?>';
     }
 });
 </script>

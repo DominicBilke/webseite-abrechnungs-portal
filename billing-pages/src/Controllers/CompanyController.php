@@ -201,6 +201,176 @@ class CompanyController
     }
 
     /**
+     * Show company details
+     */
+    public function view(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get company details
+        $sql = "SELECT * FROM companies WHERE id = ? AND user_id = ?";
+        $company = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$company) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /company/overview');
+            exit;
+        }
+
+        // Get related invoices
+        $sql = "SELECT * FROM invoices WHERE client_id = ? ORDER BY invoice_date DESC LIMIT 10";
+        $invoices = $this->database->query($sql, [$id]);
+
+        $this->render('company/view', [
+            'title' => $company['company_name'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'company' => $company,
+            'invoices' => $invoices
+        ]);
+    }
+
+    /**
+     * Show edit company form
+     */
+    public function edit(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get company details
+        $sql = "SELECT * FROM companies WHERE id = ? AND user_id = ?";
+        $company = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$company) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /company/overview');
+            exit;
+        }
+
+        $this->render('company/edit', [
+            'title' => $this->localization->get('edit') . ' ' . $company['company_name'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'company' => $company
+        ]);
+    }
+
+    /**
+     * Update company
+     */
+    public function update(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Validate input
+        $companyName = trim($_POST['company_name'] ?? '');
+        $companyAddress = trim($_POST['company_address'] ?? '');
+        $companyPhone = trim($_POST['company_phone'] ?? '');
+        $companyEmail = trim($_POST['company_email'] ?? '');
+        $companyContact = trim($_POST['company_contact'] ?? '');
+        $companyVat = trim($_POST['company_vat'] ?? '');
+        $companyRegistration = trim($_POST['company_registration'] ?? '');
+        $companyBank = trim($_POST['company_bank'] ?? '');
+        $status = trim($_POST['status'] ?? 'active');
+
+        if (empty($companyName)) {
+            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('company_name')]));
+            header('Location: /company/edit/' . $id);
+            exit;
+        }
+
+        // Update company
+        $sql = "UPDATE companies SET company_name = ?, company_address = ?, company_phone = ?, 
+                company_email = ?, company_contact = ?, company_vat = ?, company_registration = ?, 
+                company_bank = ?, status = ?, updated_at = NOW() 
+                WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [
+                $companyName, $companyAddress, $companyPhone, $companyEmail,
+                $companyContact, $companyVat, $companyRegistration, $companyBank,
+                $status, $id, $userId
+            ]);
+
+            $this->session->setFlash('success', $this->localization->get('success_updated'));
+            header('Location: /company/overview');
+            exit;
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_update'));
+            header('Location: /company/edit/' . $id);
+            exit;
+        }
+    }
+
+    /**
+     * Delete company
+     */
+    public function delete(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Check if company exists and belongs to user
+        $sql = "SELECT id FROM companies WHERE id = ? AND user_id = ?";
+        $company = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$company) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /company/overview');
+            exit;
+        }
+
+        // Check if company has related invoices
+        $sql = "SELECT COUNT(*) as count FROM invoices WHERE client_id = ?";
+        $result = $this->database->queryOne($sql, [$id]);
+        
+        if ($result['count'] > 0) {
+            $this->session->setFlash('error', $this->localization->get('error_company_has_invoices'));
+            header('Location: /company/overview');
+            exit;
+        }
+
+        // Delete company
+        $sql = "DELETE FROM companies WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [$id, $userId]);
+            $this->session->setFlash('success', $this->localization->get('success_deleted'));
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_delete'));
+        }
+        
+        header('Location: /company/overview');
+        exit;
+    }
+
+    /**
+     * Search companies via API
+     */
+    public function search(): void
+    {
+        header('Content-Type: application/json');
+        
+        $userId = $this->session->getUserId();
+        $query = trim($_POST['query'] ?? '');
+        
+        if (empty($query)) {
+            echo json_encode(['success' => true, 'data' => []]);
+            return;
+        }
+
+        $sql = "SELECT id, company_name, company_contact, company_email 
+                FROM companies 
+                WHERE user_id = ? AND (company_name LIKE ? OR company_contact LIKE ? OR company_email LIKE ?)
+                ORDER BY company_name 
+                LIMIT 10";
+        
+        $searchTerm = "%{$query}%";
+        $companies = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        
+        echo json_encode(['success' => true, 'data' => $companies]);
+    }
+
+    /**
      * Render a template
      */
     private function render(string $template, array $data = []): void

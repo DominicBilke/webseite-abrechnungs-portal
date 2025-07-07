@@ -690,4 +690,208 @@ class BillingController
         extract($data);
         include __DIR__ . "/../../templates/{$template}.php";
     }
+
+    /**
+     * Show all invoices
+     */
+    public function all(): void
+    {
+        $userId = $this->session->getUserId();
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
+
+        // Get filters
+        $status = $_GET['status'] ?? '';
+        $fromDate = $_GET['from_date'] ?? '';
+        $toDate = $_GET['to_date'] ?? '';
+
+        // Build WHERE clause
+        $whereConditions = ['user_id = ?'];
+        $params = [$userId];
+
+        if (!empty($status) && $status !== 'all') {
+            $whereConditions[] = 'status = ?';
+            $params[] = $status;
+        }
+
+        if (!empty($fromDate)) {
+            $whereConditions[] = 'invoice_date >= ?';
+            $params[] = $fromDate;
+        }
+
+        if (!empty($toDate)) {
+            $whereConditions[] = 'invoice_date <= ?';
+            $params[] = $toDate;
+        }
+
+        $whereClause = implode(' AND ', $whereConditions);
+
+        // Get invoices with pagination
+        $sql = "SELECT * FROM invoices WHERE {$whereClause} ORDER BY invoice_date DESC LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
+        $invoices = $this->database->query($sql, $params);
+
+        // Get total count for pagination
+        $countSql = "SELECT COUNT(*) as total FROM invoices WHERE {$whereClause}";
+        $totalResult = $this->database->queryOne($countSql, array_slice($params, 0, -2));
+        $total = $totalResult['total'] ?? 0;
+        $totalPages = ceil($total / $limit);
+
+        $this->render('billing/all', [
+            'title' => $this->localization->get('all') . ' ' . $this->localization->get('invoices'),
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'invoices' => $invoices,
+            'pagination' => [
+                'current' => $page,
+                'total' => $totalPages,
+                'total_records' => $total
+            ],
+            'filters' => [
+                'status' => $status,
+                'from_date' => $fromDate,
+                'to_date' => $toDate
+            ]
+        ]);
+    }
+
+    /**
+     * Show invoice details
+     */
+    public function view(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get invoice details
+        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing');
+            exit;
+        }
+
+        // Get invoice items
+        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
+        $items = $this->database->query($sql, [$id]);
+
+        $this->render('billing/view', [
+            'title' => $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'invoice' => $invoice,
+            'items' => $items
+        ]);
+    }
+
+    /**
+     * Show edit invoice form
+     */
+    public function edit(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Get invoice details
+        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing');
+            exit;
+        }
+
+        // Get invoice items
+        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
+        $items = $this->database->query($sql, [$id]);
+
+        $this->render('billing/edit', [
+            'title' => $this->localization->get('edit') . ' ' . $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
+            'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
+            'invoice' => $invoice,
+            'items' => $items
+        ]);
+    }
+
+    /**
+     * Update invoice
+     */
+    public function update(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Validate input
+        $clientName = trim($_POST['client_name'] ?? '');
+        $clientAddress = trim($_POST['client_address'] ?? '');
+        $clientEmail = trim($_POST['client_email'] ?? '');
+        $invoiceDate = trim($_POST['invoice_date'] ?? '');
+        $dueDate = trim($_POST['due_date'] ?? '');
+        $status = trim($_POST['status'] ?? 'draft');
+        $notes = trim($_POST['notes'] ?? '');
+
+        if (empty($clientName) || empty($invoiceDate)) {
+            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('client_name') . '/' . $this->localization->get('invoice_date')]));
+            header('Location: /billing/edit/' . $id);
+            exit;
+        }
+
+        // Update invoice
+        $sql = "UPDATE invoices SET client_name = ?, client_address = ?, client_email = ?, 
+                invoice_date = ?, due_date = ?, status = ?, notes = ?, updated_at = NOW() 
+                WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [
+                $clientName, $clientAddress, $clientEmail, $invoiceDate,
+                $dueDate, $status, $notes, $id, $userId
+            ]);
+
+            $this->session->setFlash('success', $this->localization->get('success_updated'));
+            header('Location: /billing');
+            exit;
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_update'));
+            header('Location: /billing/edit/' . $id);
+            exit;
+        }
+    }
+
+    /**
+     * Delete invoice
+     */
+    public function delete(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Check if invoice exists and belongs to user
+        $sql = "SELECT id FROM invoices WHERE id = ? AND user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing');
+            exit;
+        }
+
+        // Delete invoice items first
+        $sql = "DELETE FROM invoice_items WHERE invoice_id = ?";
+        $this->database->execute($sql, [$id]);
+
+        // Delete invoice
+        $sql = "DELETE FROM invoices WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [$id, $userId]);
+            $this->session->setFlash('success', $this->localization->get('success_deleted'));
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_delete'));
+        }
+        
+        header('Location: /billing');
+        exit;
+    }
 } 

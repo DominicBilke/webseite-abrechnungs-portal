@@ -10,13 +10,13 @@ $session = new BillingPages\Core\Session();
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-0">
-                <i class="bi bi-plus-circle me-2"></i>
-                <?= $localization->get('add') ?> <?= $localization->get('work') ?>
+                <i class="bi bi-pencil me-2"></i>
+                <?= $localization->get('edit') ?> <?= $localization->get('work') ?>
             </h1>
-            <p class="text-muted"><?= $localization->get('add') ?> <?= $localization->get('new') ?> <?= $localization->get('work') ?> <?= $localization->get('entry') ?></p>
+            <p class="text-muted"><?= $localization->get('update') ?> <?= $localization->get('work') ?> <?= $localization->get('entry') ?> <?= $localization->get('information') ?></p>
         </div>
         <div>
-            <a href="/work/overview" class="btn btn-outline-secondary">
+            <a href="/work/view/<?= $work['id'] ?>" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left me-1"></i>
                 <?= $localization->get('back') ?>
             </a>
@@ -29,11 +29,11 @@ $session = new BillingPages\Core\Session();
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-primary">
                         <i class="bi bi-clock me-2"></i>
-                        <?= $localization->get('new') ?> <?= $localization->get('work') ?> <?= $localization->get('entry') ?>
+                        <?= htmlspecialchars($work['work_description']) ?>
                     </h6>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="/work/add" id="workForm">
+                    <form method="POST" action="/work/update/<?= $work['id'] ?>" id="workForm">
                         <div class="row">
                             <!-- Work Information -->
                             <div class="col-md-6">
@@ -44,7 +44,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_date') ?> <span class="text-danger">*</span>
                                     </label>
                                     <input type="date" class="form-control" id="work_date" name="work_date" 
-                                           value="<?= date('Y-m-d') ?>" required>
+                                           value="<?= $work['work_date'] ?>" required>
                                 </div>
 
                                 <div class="mb-3">
@@ -52,7 +52,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_hours') ?> <span class="text-danger">*</span>
                                     </label>
                                     <input type="number" class="form-control" id="work_hours" name="work_hours" 
-                                           value="8.00" step="0.25" min="0" required>
+                                           value="<?= $work['work_hours'] ?>" step="0.25" min="0" required>
                                     <div class="form-text"><?= $localization->get('enter_hours_decimal') ?></div>
                                 </div>
 
@@ -61,7 +61,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_rate') ?> (€/<?= $localization->get('hour') ?>)
                                     </label>
                                     <input type="number" class="form-control" id="work_rate" name="work_rate" 
-                                           value="50.00" step="0.01" min="0">
+                                           value="<?= $work['work_rate'] ?>" step="0.01" min="0">
                                 </div>
 
                                 <div class="mb-3">
@@ -70,12 +70,24 @@ $session = new BillingPages\Core\Session();
                                     </label>
                                     <select class="form-select" id="work_type" name="work_type">
                                         <option value=""><?= $localization->get('select_work_type') ?></option>
-                                        <option value="development"><?= $localization->get('development') ?></option>
-                                        <option value="design"><?= $localization->get('design') ?></option>
-                                        <option value="consulting"><?= $localization->get('consulting') ?></option>
-                                        <option value="maintenance"><?= $localization->get('maintenance') ?></option>
-                                        <option value="testing"><?= $localization->get('testing') ?></option>
-                                        <option value="other"><?= $localization->get('other') ?></option>
+                                        <option value="development" <?= $work['work_type'] === 'development' ? 'selected' : '' ?>>
+                                            <?= $localization->get('development') ?>
+                                        </option>
+                                        <option value="design" <?= $work['work_type'] === 'design' ? 'selected' : '' ?>>
+                                            <?= $localization->get('design') ?>
+                                        </option>
+                                        <option value="consulting" <?= $work['work_type'] === 'consulting' ? 'selected' : '' ?>>
+                                            <?= $localization->get('consulting') ?>
+                                        </option>
+                                        <option value="maintenance" <?= $work['work_type'] === 'maintenance' ? 'selected' : '' ?>>
+                                            <?= $localization->get('maintenance') ?>
+                                        </option>
+                                        <option value="testing" <?= $work['work_type'] === 'testing' ? 'selected' : '' ?>>
+                                            <?= $localization->get('testing') ?>
+                                        </option>
+                                        <option value="other" <?= $work['work_type'] === 'other' ? 'selected' : '' ?>>
+                                            <?= $localization->get('other') ?>
+                                        </option>
                                     </select>
                                 </div>
                             </div>
@@ -89,7 +101,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_description') ?> <span class="text-danger">*</span>
                                     </label>
                                     <textarea class="form-control" id="work_description" name="work_description" 
-                                              rows="4" required placeholder="<?= $localization->get('describe_your_work') ?>"></textarea>
+                                              rows="4" required><?= htmlspecialchars($work['work_description']) ?></textarea>
                                 </div>
 
                                 <div class="mb-3">
@@ -97,7 +109,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_project') ?>
                                     </label>
                                     <input type="text" class="form-control" id="work_project" name="work_project" 
-                                           value="<?= htmlspecialchars($_GET['project'] ?? '') ?>">
+                                           value="<?= htmlspecialchars($work['work_project']) ?>">
                                 </div>
 
                                 <div class="mb-3">
@@ -105,7 +117,7 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('work_client') ?>
                                     </label>
                                     <input type="text" class="form-control" id="work_client" name="work_client" 
-                                           value="<?= htmlspecialchars($_GET['client'] ?? '') ?>">
+                                           value="<?= htmlspecialchars($work['work_client']) ?>">
                                 </div>
 
                                 <div class="mb-3">
@@ -113,9 +125,15 @@ $session = new BillingPages\Core\Session();
                                         <?= $localization->get('status') ?>
                                     </label>
                                     <select class="form-select" id="status" name="status">
-                                        <option value="pending"><?= $localization->get('pending') ?></option>
-                                        <option value="completed"><?= $localization->get('completed') ?></option>
-                                        <option value="billed"><?= $localization->get('billed') ?></option>
+                                        <option value="pending" <?= $work['status'] === 'pending' ? 'selected' : '' ?>>
+                                            <?= $localization->get('pending') ?>
+                                        </option>
+                                        <option value="completed" <?= $work['status'] === 'completed' ? 'selected' : '' ?>>
+                                            <?= $localization->get('completed') ?>
+                                        </option>
+                                        <option value="billed" <?= $work['status'] === 'billed' ? 'selected' : '' ?>>
+                                            <?= $localization->get('billed') ?>
+                                        </option>
                                     </select>
                                 </div>
                             </div>
@@ -128,7 +146,9 @@ $session = new BillingPages\Core\Session();
                                     <div class="row align-items-center">
                                         <div class="col-md-6">
                                             <strong><?= $localization->get('calculated_total') ?>:</strong>
-                                            <span id="calculatedTotal" class="fs-5 text-success">400.00 €</span>
+                                            <span id="calculatedTotal" class="fs-5 text-success">
+                                                <?= number_format($work['work_total'], 2) ?> €
+                                            </span>
                                         </div>
                                         <div class="col-md-6 text-end">
                                             <small class="text-muted">
@@ -140,38 +160,10 @@ $session = new BillingPages\Core\Session();
                             </div>
                         </div>
 
-                        <!-- Quick Actions -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card border-0 bg-light">
-                                    <div class="card-body">
-                                        <h6 class="mb-3"><?= $localization->get('quick_actions') ?></h6>
-                                        <div class="d-flex gap-2 flex-wrap">
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setHours(4)">
-                                                4 <?= $localization->get('hours') ?>
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setHours(6)">
-                                                6 <?= $localization->get('hours') ?>
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setHours(8)">
-                                                8 <?= $localization->get('hours') ?>
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setHours(10)">
-                                                10 <?= $localization->get('hours') ?>
-                                            </button>
-                                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setHours(12)">
-                                                12 <?= $localization->get('hours') ?>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- Form Actions -->
                         <div class="d-flex justify-content-between">
                             <div>
-                                <a href="/work/overview" class="btn btn-outline-secondary">
+                                <a href="/work/view/<?= $work['id'] ?>" class="btn btn-outline-secondary">
                                     <i class="bi bi-arrow-left me-1"></i>
                                     <?= $localization->get('cancel') ?>
                                 </a>
@@ -179,7 +171,7 @@ $session = new BillingPages\Core\Session();
                             <div>
                                 <button type="submit" class="btn btn-primary">
                                     <i class="bi bi-check-circle me-1"></i>
-                                    <?= $localization->get('save') ?> <?= $localization->get('work') ?>
+                                    <?= $localization->get('save') ?> <?= $localization->get('changes') ?>
                                 </button>
                             </div>
                         </div>
@@ -191,12 +183,6 @@ $session = new BillingPages\Core\Session();
 </div>
 
 <script>
-// Quick action functions
-function setHours(hours) {
-    document.getElementById('work_hours').value = hours;
-    calculateTotal();
-}
-
 // Form validation and functionality
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('workForm');
@@ -290,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
             draftData[key] = value;
         }
         
-        localStorage.setItem('work_draft_new', JSON.stringify(draftData));
+        localStorage.setItem('work_draft_<?= $work['id'] ?>', JSON.stringify(draftData));
         
         // Show auto-save indicator
         const indicator = document.createElement('div');
@@ -310,7 +296,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Load draft on page load
-    const savedDraft = localStorage.getItem('work_draft_new');
+    const savedDraft = localStorage.getItem('work_draft_<?= $work['id'] ?>');
     if (savedDraft) {
         const draftData = JSON.parse(savedDraft);
         Object.keys(draftData).forEach(key => {
@@ -324,7 +310,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Clear draft after successful save
     form.addEventListener('submit', function() {
-        localStorage.removeItem('work_draft_new');
+        localStorage.removeItem('work_draft_<?= $work['id'] ?>');
     });
 
     // Initialize total calculation
@@ -342,16 +328,7 @@ document.addEventListener('keydown', function(e) {
     // Ctrl/Cmd + Z to cancel
     if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
-        window.location.href = '/work/overview';
-    }
-    
-    // Number keys for quick hours
-    if (e.key >= '1' && e.key <= '9' && !e.ctrlKey && !e.metaKey) {
-        const hours = parseInt(e.key);
-        if (hours <= 12) {
-            document.getElementById('work_hours').value = hours;
-            calculateTotal();
-        }
+        window.location.href = '/work/view/<?= $work['id'] ?>';
     }
 });
 </script>
