@@ -132,13 +132,20 @@ class BillingController extends BaseController
         // Generate invoice number
         $invoiceNumber = $this->generateInvoiceNumber($userId);
 
+        // Get company info for the invoice
+        $companySql = "SELECT company_name, company_address, company_email FROM companies WHERE id = ? AND user_id = ?";
+        $company = $this->database->queryOne($companySql, [$clientId, $userId]);
+        
         // Create invoice
         $sql = "INSERT INTO invoices (user_id, client_id, invoice_number, invoice_date, due_date, 
-                total, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')";
+                client_name, client_address, client_email, subtotal, total, notes, status) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')";
         
         try {
             $this->database->execute($sql, [
-                $userId, $clientId, $invoiceNumber, $invoiceDate, $dueDate, $total, $notes
+                $userId, $clientId, $invoiceNumber, $invoiceDate, $dueDate,
+                $company['company_name'] ?? '', $company['company_address'] ?? '', $company['company_email'] ?? '',
+                $total, $total, $notes
             ]);
             
             $invoiceId = $this->database->lastInsertId();

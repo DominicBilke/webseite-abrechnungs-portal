@@ -75,6 +75,8 @@ CREATE TABLE tours (
 CREATE TABLE work_entries (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    invoice_id INT NULL,
+    billed TINYINT(1) DEFAULT 0,
     work_date DATE NOT NULL,
     work_hours DECIMAL(5,2) NOT NULL,
     work_description TEXT,
@@ -87,7 +89,10 @@ CREATE TABLE work_entries (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
+    INDEX idx_invoice_id (invoice_id),
+    INDEX idx_billed (billed),
     INDEX idx_work_date (work_date),
     INDEX idx_status (status)
 );
@@ -142,6 +147,7 @@ CREATE TABLE money_entries (
 CREATE TABLE invoices (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
+    client_id INT NULL,
     invoice_number VARCHAR(50) UNIQUE NOT NULL,
     invoice_date DATE NOT NULL,
     due_date DATE NOT NULL,
@@ -159,7 +165,9 @@ CREATE TABLE invoices (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (client_id) REFERENCES companies(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
+    INDEX idx_client_id (client_id),
     INDEX idx_invoice_number (invoice_number),
     INDEX idx_invoice_date (invoice_date),
     INDEX idx_due_date (due_date),
