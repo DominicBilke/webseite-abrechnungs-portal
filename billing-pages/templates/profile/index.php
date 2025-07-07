@@ -76,12 +76,21 @@
                 
                 <hr>
                 
-                <div class="d-flex justify-content-between">
+                <div class="d-flex flex-wrap gap-2 justify-content-between">
                     <a href="/profile/change-password" class="btn btn-outline-primary">
                         <i class="bi bi-key me-1"></i>
                         <?= $localization->get('change_password') ?>
                     </a>
-                    
+                    <a href="/settings" class="btn btn-outline-secondary">
+                        <i class="bi bi-gear me-1"></i>
+                        <?= $localization->get('settings') ?>
+                    </a>
+                    <?php if ($session->hasRole('admin')): ?>
+                        <a href="/users" class="btn btn-outline-info">
+                            <i class="bi bi-people me-1"></i>
+                            <?= $localization->get('users') ?>
+                        </a>
+                    <?php endif; ?>
                     <a href="/dashboard" class="btn btn-secondary">
                         <i class="bi bi-arrow-left me-1"></i>
                         <?= $localization->get('back_to_dashboard') ?>
