@@ -13,10 +13,10 @@ if ($_ENV['APP_DEBUG'] ?? false) {
 }
 
 // Database configuration
-define('DB_HOST', 'localhost:3306');
+define('DB_HOST', 'localhost');
 define('DB_NAME', 'billing_system');
-define('DB_USER', 'root_billing_pages');
-define('DB_PASS', 'hggZKAnj1%ni%3w1');
+define('DB_USER', 'database_user');
+define('DB_PASS', 'database_password');
 
 // Application configuration
 define('APP_NAME', 'Billing Pages');
