@@ -986,4 +986,10 @@ return [
     'currency' => 'Währung',
     'payment_method' => 'Zahlungsmethode',
     'payment_date' => 'Zahlungsdatum',
+    'error_title' => 'Fehler',
+    'error_500_title' => 'Serverfehler',
+    'error_500_message' => 'Ein interner Serverfehler ist aufgetreten. Bitte versuchen Sie es später erneut.',
+    'go_to_dashboard' => 'Zum Dashboard',
+    'show_error_details' => 'Fehlerdetails anzeigen',
+    'error_message' => 'Fehlermeldung',
 ]; 

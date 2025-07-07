@@ -117,15 +117,23 @@ class Application
     }
 
     /**
-     * Run the application
+     * Handle incoming request
      */
-    public function run(): void
+    public function handleRequest(): void
     {
         try {
             $this->router->dispatch();
         } catch (\Exception $e) {
             $this->handleError($e);
         }
+    }
+
+    /**
+     * Run the application
+     */
+    public function run(): void
+    {
+        $this->handleRequest();
     }
 
     /**

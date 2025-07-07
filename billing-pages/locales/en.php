@@ -557,4 +557,10 @@ return [
     'error_send_invoice' => 'Error sending invoice',
     'invoice_sent_successfully' => 'Invoice sent successfully',
     'confirm_send_invoice' => 'Do you want to send this invoice?',
+    'error_title' => 'Error',
+    'error_500_title' => 'Server Error',
+    'error_500_message' => 'An internal server error occurred. Please try again later.',
+    'go_to_dashboard' => 'Go to Dashboard',
+    'show_error_details' => 'Show Error Details',
+    'error_message' => 'Error Message',
 ]; 
