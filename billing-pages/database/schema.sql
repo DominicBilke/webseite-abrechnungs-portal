@@ -217,6 +217,10 @@ CREATE TABLE audit_log (
 INSERT INTO users (username, email, password, first_name, last_name, role, status) VALUES 
 ('admin', 'admin@billing-portal.com', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Admin', 'User', 'admin', 'active');
 
+-- Insert demo user (password: demo123)
+INSERT INTO users (username, email, password, first_name, last_name, role, status) VALUES 
+('demo', 'demo@billing-portal.com', '$2y$10$YourHashedPasswordHere', 'Demo', 'User', 'user', 'active');
+
 -- Insert default settings
 INSERT INTO settings (setting_key, setting_value, setting_type) VALUES 
 ('app_name', 'Billing Portal', 'string'),

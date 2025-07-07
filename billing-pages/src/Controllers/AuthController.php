@@ -19,7 +19,10 @@ class AuthController extends BaseController
         }
 
         $this->render('auth/login', [
-            'title' => $this->localization->get('login')
+            'title' => $this->localization->get('login'),
+            'localization' => $this->localization,
+            'session' => $this->session,
+            'locale' => $this->localization->getLocale()
         ]);
     }
 
@@ -32,7 +35,7 @@ class AuthController extends BaseController
         $password = $_POST['password'] ?? '';
 
         if (empty($username) || empty($password)) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => 'username/password']));
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
             header('Location: /');
             exit;
         }

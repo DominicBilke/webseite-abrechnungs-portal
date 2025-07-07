@@ -328,4 +328,152 @@ For support and questions:
 
 ## License
 
-This project is licensed under the MIT License. See the LICENSE file for details. 
+This project is licensed under the MIT License. See the LICENSE file for details.
+
+## Quick Setup
+
+### 1. Database Setup
+
+1. **Create the database:**
+   ```sql
+   CREATE DATABASE billing_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+   ```
+
+2. **Import the schema:**
+   ```bash
+   mysql -u your_username -p billing_system < database/schema.sql
+   ```
+
+3. **Add demo users:**
+   ```bash
+   mysql -u your_username -p billing_system < database/demo_users.sql
+   ```
+
+### 2. Configuration
+
+1. **Copy configuration file:**
+   ```bash
+   cp config/config.example.php config/config.php
+   ```
+
+2. **Edit `config/config.php` with your database credentials:**
+   ```php
+   define('DB_HOST', 'localhost:3306');
+   define('DB_NAME', 'billing_system');
+   define('DB_USER', 'your_username');
+   define('DB_PASS', 'your_password');
+   ```
+
+### 3. Demo Users
+
+After running the demo_users.sql script, you'll have these users:
+
+**Demo User:**
+- Username: `demo`
+- Password: `demo123`
+- Role: User
+
+**Admin User:**
+- Username: `admin`
+- Password: `password`
+- Role: Admin
+
+### 4. Web Server Setup
+
+#### Option A: PHP Built-in Server (Development)
+```bash
+cd billing-pages
+php -S localhost:8000 -t public
+```
+
+#### Option B: Apache/Nginx (Production)
+1. Point your web server to the `public/` directory
+2. Ensure `.htaccess` is enabled for Apache
+3. Set proper file permissions
+
+### 5. Access the Application
+
+Open your browser and go to:
+- **Development:** `http://localhost:8000`
+- **Production:** `http://your-domain.com`
+
+## Troubleshooting
+
+### Login Issues
+
+If you're having trouble logging in:
+
+1. **Check database connection:**
+   - Verify database credentials in `config/config.php`
+   - Ensure MySQL service is running
+
+2. **Verify demo users exist:**
+   ```sql
+   SELECT username, email, status FROM users;
+   ```
+
+3. **Reset demo user password:**
+   ```sql
+   UPDATE users SET password = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi' WHERE username = 'demo';
+   UPDATE users SET password = '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi' WHERE username = 'admin';
+   ```
+
+### Localization Issues
+
+If localization is not working:
+
+1. **Check locale files exist:**
+   - `locales/de.php` (German)
+   - `locales/en.php` (English)
+
+2. **Verify file permissions:**
+   - Ensure web server can read locale files
+
+3. **Check configuration:**
+   - Verify `DEFAULT_LOCALE` is set in config
+
+### Common Errors
+
+1. **"Call to undefined method"**
+   - Run `composer install` to install dependencies
+
+2. **"Database connection failed"**
+   - Check database credentials and MySQL service
+
+3. **"Template not found"**
+   - Ensure all template files are in the correct directories
+
+## File Structure
+
+```
+billing-pages/
+├── assets/                 # Static assets
+├── config/                 # Configuration files
+├── database/              # Database schema and demo data
+│   ├── schema.sql         # Main database schema
+│   └── demo_users.sql     # Demo users and sample data
+├── locales/               # Localization files
+├── public/                # Web root
+├── src/                   # Application source
+└── templates/             # View templates
+```
+
+## Security Notes
+
+1. **Change default passwords** in production
+2. **Use HTTPS** in production
+3. **Set proper file permissions**
+4. **Regular database backups**
+5. **Keep dependencies updated**
+
+## Support
+
+For issues and questions:
+1. Check this installation guide
+2. Review the README.md file
+3. Check the troubleshooting section
+4. Create an issue in the repository
+
+---
+
+**Billing Pages Portal** - Professional billing and time tracking solution 
