@@ -82,6 +82,14 @@ RewriteRule ^database/ - [F,L]
     ExpiresByType font/woff2 "access plus 1 year"
 </IfModule>
 
+# Set correct MIME types for static assets
+<IfModule mod_mime.c>
+    AddType text/css .css
+    AddType application/javascript .js
+    AddType image/svg+xml .svg
+    AddType image/x-icon .ico
+</IfModule>
+
 # PHP settings
 <IfModule mod_php.c>
     php_value upload_max_filesize 10M

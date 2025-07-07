@@ -12,17 +12,9 @@ use TCPDF;
  */
 class BillingController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
     public function __construct()
     {
         parent::__construct();
-        
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
 
         // Check authentication
         if (!$this->session->isAuthenticated()) {

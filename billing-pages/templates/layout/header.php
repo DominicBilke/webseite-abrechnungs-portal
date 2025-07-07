@@ -15,7 +15,7 @@
     <link href="/assets/css/style.css" rel="stylesheet">
     
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    <link rel="icon" type="image/svg+xml" href="/assets/images/favicon.svg">
 </head>
 <body>
     <!-- Navigation -->
