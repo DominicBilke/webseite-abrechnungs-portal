@@ -13,7 +13,7 @@ class Database
     private ?PDO $connection = null;
     private static ?Database $instance = null;
 
-    private function __construct()
+    function __construct()
     {
         $this->connect();
     }
