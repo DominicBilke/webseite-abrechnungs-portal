@@ -59,68 +59,50 @@ A modern, comprehensive billing portal built with PHP, featuring company managem
   - Complete translation coverage
   - Language switching
 
-## 🚀 Production Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 
 - PHP 8.0 or higher
-- MySQL 5.7 or higher / MariaDB 10.2 or higher
+- MySQL 5.7 or higher
 - Composer
 - Web server (Apache/Nginx)
-- SSL certificate (recommended for production)
 
-### Production Installation
+### Installation
 
-1. **Download and extract the application**
+1. **Clone the repository**
    ```bash
-   # Extract to your web server directory
-   # Ensure the public/ directory is your web root
+   git clone <repository-url>
+   cd billing-pages
    ```
 
 2. **Install dependencies**
    ```bash
-   composer install --no-dev --optimize-autoloader
+   composer install
    ```
 
 3. **Set up the database**
    ```bash
-   # Create database and user
-   mysql -u root -p
-   CREATE DATABASE billing_system;
-   CREATE USER 'billing_user'@'localhost' IDENTIFIED BY 'secure_password';
-   GRANT ALL PRIVILEGES ON billing_system.* TO 'billing_user'@'localhost';
-   FLUSH PRIVILEGES;
-   
    # Import the database schema
-   mysql -u billing_user -p billing_system < database/schema.sql
+   mysql -u your_username -p your_database < database/schema.sql
    ```
 
 4. **Configure the application**
    ```bash
-   # Copy the environment example
-   cp config/env.production.example .env
-   
-   # Edit .env with your production settings
-   nano .env
+   # Copy and edit the configuration
+   cp config/config.example.php config/config.php
+   # Edit config.php with your database credentials
    ```
 
-5. **Set proper permissions**
+5. **Set up the web server**
    ```bash
-   # Set directory permissions
-   chmod 755 public/
-   chmod 644 public/.htaccess
-   chmod 600 .env
-   chmod 755 config/
+   # For development, you can use PHP's built-in server
+   php -S localhost:8000 -t public
    ```
 
-6. **Configure web server**
-   - Point document root to `public/` directory
-   - Enable HTTPS/SSL
-   - Configure proper security headers
-
-7. **Access the application**
-   - Open your browser and go to your domain
-   - Create your first user account
+6. **Access the application**
+   - Open your browser and go to `http://localhost:8000`
+   - Login with the default credentials (check the database for user setup)
 
 ## 📁 Project Structure
 
@@ -138,42 +120,29 @@ billing-pages/
 └── vendor/                # Composer dependencies
 ```
 
-## 🔧 Production Configuration
+## 🔧 Configuration
 
-### Environment Configuration
+### Database Configuration
 
-The application uses environment variables for configuration. Copy the example file and update it:
+Edit `config/config.php` to set your database credentials:
 
-```bash
-cp config/env.production.example .env
+```php
+define('DB_HOST', 'localhost:3306');
+define('DB_NAME', 'billing_system');
+define('DB_USER', 'your_username');
+define('DB_PASS', 'your_password');
 ```
 
-Key configuration options:
+### Environment Variables
+
+Create a `.env` file in the root directory:
 
 ```env
-# Application Settings
-APP_NAME="Billing Portal"
-APP_URL="https://your-domain.com"
-APP_ENV="production"
-APP_DEBUG=false
-
-# Database Configuration
-DB_HOST="localhost:3306"
-DB_NAME="billing_system"
-DB_USER="your_db_user"
-DB_PASS="your_secure_password"
-
-# Security
-SESSION_SECRET="your-super-secure-random-session-secret-key"
+APP_DEBUG=true
+APP_ENV=development
+SESSION_SECRET=your-secret-key
+DEFAULT_LOCALE=de
 ```
-
-### Security Considerations
-
-- Use strong, unique passwords for database and session
-- Enable HTTPS/SSL in production
-- Regularly backup your database
-- Keep PHP and dependencies updated
-- Monitor application logs for security issues
 
 ## 📊 Database Schema
 

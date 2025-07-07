@@ -20,9 +20,9 @@ define('DB_PASS', 'hggZKAnj1%ni%3w1');
 
 // Application configuration
 define('APP_NAME', 'Billing Pages');
-define('APP_URL', 'http://billing-pages.com');
-define('APP_ENV', 'production');
-define('APP_DEBUG', true);
+define('APP_URL', $_ENV['APP_URL'] ?? 'http://localhost');
+define('APP_ENV', $_ENV['APP_ENV'] ?? 'production');
+define('APP_DEBUG', $_ENV['APP_DEBUG'] ?? false);
 
 // Session configuration
 define('SESSION_SECRET', $_ENV['SESSION_SECRET'] ?? 'default-secret-key');

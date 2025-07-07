@@ -529,4 +529,6 @@ return [
     'change_password' => 'Passwort ändern',
     'back_to_dashboard' => 'Zurück zum Dashboard',
     'cancel' => 'Abbrechen',
+    'all_rights_reserved' => 'Alle Rechte vorbehalten',
+    'version' => 'Version',
 ]; 

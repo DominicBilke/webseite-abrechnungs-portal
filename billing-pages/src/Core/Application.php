@@ -11,6 +11,7 @@ use BillingPages\Controllers\BillingController;
 use BillingPages\Controllers\ToursController;
 use BillingPages\Controllers\TasksController;
 use BillingPages\Controllers\ProfileController;
+use BillingPages\Controllers\InfoController;
 use BillingPages\Core\Router;
 use BillingPages\Core\Database;
 use BillingPages\Core\Session;
@@ -124,6 +125,12 @@ class Application
         $this->router->post('/profile/edit', [ProfileController::class, 'update']);
         $this->router->get('/profile/change-password', [ProfileController::class, 'changePassword']);
         $this->router->post('/profile/change-password', [ProfileController::class, 'updatePassword']);
+
+        // Info routes (external links)
+        $this->router->get('/help', [InfoController::class, 'help']);
+        $this->router->get('/contact', [InfoController::class, 'contact']);
+        $this->router->get('/privacy', [InfoController::class, 'privacy']);
+        $this->router->get('/imprint', [InfoController::class, 'imprint']);
 
         // User management routes (placeholder for future implementation)
         $this->router->get('/users', [DashboardController::class, 'redirectToDashboard']);

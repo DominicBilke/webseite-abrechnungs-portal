@@ -1,0 +1,105 @@
+# Billing Portal - Git Ignore File
+
+# Environment files
+.env
+.env.local
+.env.production
+.env.staging
+
+# Configuration files with sensitive data
+config/config.php
+config/database.php
+
+# Logs
+logs/
+*.log
+error_log
+access_log
+
+# Uploads and user content
+uploads/
+public/uploads/
+
+# Cache and temporary files
+cache/
+tmp/
+temp/
+*.tmp
+*.temp
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Database dumps
+*.sql
+!database/schema.sql
+
+# Composer
+vendor/
+composer.lock
+
+# Node modules (if any)
+node_modules/
+npm-debug.log*
+
+# Build artifacts
+dist/
+build/
+
+# Test files
+tests/
+test_*.php
+*_test.php
+
+# Development files
+debug_*.php
+setup_*.php
+demo_*.php
+install.php
+
+# Security
+.htpasswd
+.htaccess.backup
+
+# SSL certificates
+*.pem
+*.key
+*.crt
+*.csr
+
+# Backup directories
+backups/
+backup/
+
+# Session files
+sessions/
+*.sess
+
+# PHP opcache
+*.opcache
+
+# Coverage reports
+coverage/
+*.cov
+
+# Performance monitoring
+xhprof/
+newrelic/ 

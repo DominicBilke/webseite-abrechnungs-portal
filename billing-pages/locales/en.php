@@ -619,4 +619,6 @@ return [
     'go_to_dashboard' => 'Go to Dashboard',
     'show_error_details' => 'Show Error Details',
     'error_message' => 'Error Message',
+    'all_rights_reserved' => 'All Rights Reserved',
+    'version' => 'Version',
 ]; 
