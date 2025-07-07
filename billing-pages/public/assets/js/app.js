@@ -6,6 +6,40 @@
 let currentLocale = document.documentElement.lang || 'de';
 let apiBaseUrl = '/api';
 
+// Initialize Bootstrap components when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize all dropdowns
+    const dropdownElementList = document.querySelectorAll('.dropdown-toggle');
+    dropdownElementList.forEach(dropdownToggleEl => {
+        new bootstrap.Dropdown(dropdownToggleEl);
+    });
+    
+    // Initialize all tooltips
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltipTriggerList.forEach(tooltipTriggerEl => {
+        new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+    
+    // Initialize all popovers
+    const popoverTriggerList = document.querySelectorAll('[data-bs-toggle="popover"]');
+    popoverTriggerList.forEach(popoverTriggerEl => {
+        new bootstrap.Popover(popoverTriggerEl);
+    });
+    
+    console.log('Bootstrap components initialized');
+    
+    // Test dropdown functionality
+    const testDropdown = document.querySelector('.dropdown-toggle');
+    if (testDropdown) {
+        console.log('Dropdown toggle found:', testDropdown);
+        testDropdown.addEventListener('click', function(e) {
+            console.log('Dropdown clicked');
+        });
+    } else {
+        console.log('No dropdown toggle found');
+    }
+});
+
 // Utility functions
 const Utils = {
     /**
