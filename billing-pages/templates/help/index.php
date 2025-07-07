@@ -340,7 +340,7 @@
                                 <div class="alert alert-info">
                                     <strong><?= $localization->get('demo_credentials') ?>:</strong><br>
                                     <?= $localization->get('username') ?>: <code>demo</code><br>
-                                    <?= $localization->get('password') ?>: <code>demo123</code>
+                                    <?= $localization->get('password') ?>: <code>password</code>
                                 </div>
                             </div>
                             <div class="col-md-6 d-flex align-items-center">

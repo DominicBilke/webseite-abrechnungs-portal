@@ -86,7 +86,7 @@
                             <small class="text-muted">
                                 <strong>Demo Credentials:</strong><br>
                                 Username: <code>demo</code><br>
-                                Password: <code>demo123</code><br><br>
+                                Password: <code>password</code><br><br>
                                 <strong>Admin Credentials:</strong><br>
                                 Username: <code>admin</code><br>
                                 Password: <code>password</code>
