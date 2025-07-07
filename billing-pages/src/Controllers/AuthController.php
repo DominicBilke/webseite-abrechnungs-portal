@@ -2,26 +2,11 @@
 
 namespace BillingPages\Controllers;
 
-use BillingPages\Core\Database;
-use BillingPages\Core\Session;
-use BillingPages\Core\Localization;
-
 /**
  * Authentication Controller
  */
-class AuthController
+class AuthController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
-    public function __construct()
-    {
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
-    }
-
     /**
      * Show login form
      */
@@ -34,8 +19,7 @@ class AuthController
         }
 
         $this->render('auth/login', [
-            'title' => $this->localization->get('login'),
-            'locale' => $this->localization->getLocale()
+            'title' => $this->localization->get('login')
         ]);
     }
 

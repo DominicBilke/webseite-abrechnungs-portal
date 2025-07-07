@@ -9,7 +9,7 @@ use BillingPages\Core\Localization;
 /**
  * Dashboard Controller
  */
-class DashboardController
+class DashboardController extends BaseController
 {
     private Database $database;
     private Session $session;
@@ -17,6 +17,8 @@ class DashboardController
 
     public function __construct()
     {
+        parent::__construct();
+        
         $this->database = Database::getInstance();
         $this->session = new Session();
         $this->localization = new Localization();
@@ -46,8 +48,6 @@ class DashboardController
 
         $this->render('dashboard/index', [
             'title' => $this->localization->get('dashboard'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'stats' => $stats,
             'recentActivities' => $recentActivities,
             'chartData' => $chartData
