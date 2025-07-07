@@ -29,7 +29,7 @@
             <div class="row">
                 <div class="col-md-6">
                     <p class="text-muted mb-0">
-                        &copy; <?= date('Y') ?> <?= $localization->get('app_name') ?>. <?= $localization->get('all_rights_reserved') ?>
+                        &copy; 2025 Bilke Web- und Softwareentwicklung. <?= $localization->get('all_rights_reserved') ?>
                     </p>
                 </div>
                 <div class="col-md-6 text-end">
