@@ -1,5 +1,6 @@
--- Billing Portal Database Schema
--- Supports both German (abrechnung-portal.de) and English (billing-pages.com)
+-- Billing Portal Database Schema (Simplified - No Foreign Keys)
+-- This schema creates tables without foreign key constraints to avoid circular dependencies
+-- Run add_foreign_keys.php after this to add the constraints
 
 -- Create database
 CREATE DATABASE IF NOT EXISTS billing_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -40,7 +41,6 @@ CREATE TABLE companies (
     status ENUM('active', 'inactive') DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
     INDEX idx_company_name (company_name),
     INDEX idx_status (status)
@@ -54,18 +54,17 @@ CREATE TABLE tours (
     tour_date DATE NOT NULL,
     tour_start TIME,
     tour_end TIME,
-    tour_duration DECIMAL(5,2), -- in hours
-    tour_distance DECIMAL(8,2), -- in kilometers
+    tour_duration DECIMAL(5,2),
+    tour_distance DECIMAL(8,2),
     tour_route TEXT,
     tour_vehicle VARCHAR(50),
     tour_driver VARCHAR(100),
     tour_description TEXT,
-    tour_rate DECIMAL(10,2), -- hourly rate
-    tour_total DECIMAL(10,2), -- calculated total
+    tour_rate DECIMAL(10,2),
+    tour_total DECIMAL(10,2),
     status ENUM('pending', 'approved', 'completed', 'cancelled') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
     INDEX idx_tour_date (tour_date),
     INDEX idx_status (status)
@@ -88,7 +87,6 @@ CREATE TABLE tasks (
     task_total DECIMAL(10,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     INDEX idx_user_id (user_id),
     INDEX idx_task_status (task_status),
     INDEX idx_task_priority (task_priority),
@@ -112,8 +110,6 @@ CREATE TABLE money_entries (
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_company_id (company_id),
     INDEX idx_amount (amount),
@@ -143,8 +139,6 @@ CREATE TABLE invoices (
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (client_id) REFERENCES companies(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_client_id (client_id),
     INDEX idx_invoice_number (invoice_number),
@@ -162,7 +156,6 @@ CREATE TABLE invoice_items (
     unit_price DECIMAL(10,2) NOT NULL,
     total DECIMAL(10,2) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
     INDEX idx_invoice_id (invoice_id)
 );
 
@@ -184,9 +177,6 @@ CREATE TABLE work_entries (
     status ENUM('pending', 'approved', 'completed', 'rejected') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE SET NULL,
-    FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_company_id (company_id),
     INDEX idx_invoice_id (invoice_id),
@@ -204,7 +194,6 @@ CREATE TABLE settings (
     setting_type ENUM('string', 'number', 'boolean', 'json') DEFAULT 'string',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE KEY unique_user_setting (user_id, setting_key),
     INDEX idx_user_id (user_id),
     INDEX idx_setting_key (setting_key)
@@ -222,7 +211,6 @@ CREATE TABLE audit_log (
     ip_address VARCHAR(45),
     user_agent TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_action (action),
     INDEX idx_table_name (table_name),
@@ -248,115 +236,4 @@ INSERT INTO settings (setting_key, setting_value, setting_type) VALUES
 ('company_phone', '+49 123 456789', 'string'),
 ('company_email', 'info@yourcompany.com', 'string'),
 ('company_vat', 'DE123456789', 'string'),
-('company_bank', 'Bank Name\nIBAN: DE12345678901234567890\nBIC: DEUTDEDB123', 'string');
-
--- Create views for easier reporting
-CREATE VIEW v_dashboard_stats AS
-SELECT 
-    u.id as user_id,
-    COUNT(DISTINCT c.id) as total_companies,
-    COUNT(DISTINCT t.id) as total_tours,
-    COUNT(DISTINCT w.id) as total_work_entries,
-    COUNT(DISTINCT tk.id) as total_tasks,
-    COUNT(DISTINCT m.id) as total_money_entries,
-    COUNT(DISTINCT i.id) as total_invoices,
-    SUM(m.amount) as total_revenue,
-    SUM(CASE WHEN m.payment_status = 'pending' THEN m.amount ELSE 0 END) as pending_amount,
-    SUM(CASE WHEN i.status = 'paid' THEN i.total ELSE 0 END) as paid_invoices,
-    SUM(CASE WHEN i.due_date < CURDATE() AND i.status != 'paid' THEN i.total ELSE 0 END) as overdue_amount
-FROM users u
-LEFT JOIN companies c ON u.id = c.user_id AND c.status = 'active'
-LEFT JOIN tours t ON u.id = t.user_id AND t.status = 'completed'
-LEFT JOIN work_entries w ON u.id = w.user_id AND w.status = 'completed'
-LEFT JOIN tasks tk ON u.id = tk.user_id AND tk.task_status = 'completed'
-LEFT JOIN money_entries m ON u.id = m.user_id
-LEFT JOIN invoices i ON u.id = i.user_id
-GROUP BY u.id;
-
--- Create stored procedures for common operations
-DELIMITER //
-
-CREATE PROCEDURE GetUserStats(IN user_id_param INT)
-BEGIN
-    SELECT 
-        COUNT(DISTINCT c.id) as companies,
-        COUNT(DISTINCT t.id) as tours,
-        COUNT(DISTINCT w.id) as work_entries,
-        COUNT(DISTINCT tk.id) as tasks,
-        COUNT(DISTINCT m.id) as money_entries,
-        COUNT(DISTINCT i.id) as invoices,
-        SUM(m.amount) as total_revenue,
-        SUM(CASE WHEN m.payment_status = 'pending' THEN m.amount ELSE 0 END) as pending_amount
-    FROM users u
-    LEFT JOIN companies c ON u.id = c.user_id AND c.status = 'active'
-    LEFT JOIN tours t ON u.id = t.user_id AND t.status = 'completed'
-    LEFT JOIN work_entries w ON u.id = w.user_id AND w.status = 'completed'
-    LEFT JOIN tasks tk ON u.id = tk.user_id AND tk.task_status = 'completed'
-    LEFT JOIN money_entries m ON u.id = m.user_id
-    LEFT JOIN invoices i ON u.id = i.user_id
-    WHERE u.id = user_id_param;
-END //
-
-CREATE PROCEDURE GenerateInvoiceNumber(IN user_id_param INT, OUT invoice_number VARCHAR(50))
-BEGIN
-    DECLARE prefix VARCHAR(10);
-    DECLARE year_str VARCHAR(4);
-    DECLARE sequence_num INT;
-    
-    -- Get invoice prefix from settings
-    SELECT setting_value INTO prefix FROM settings WHERE setting_key = 'invoice_prefix' LIMIT 1;
-    IF prefix IS NULL THEN
-        SET prefix = 'INV-';
-    END IF;
-    
-    -- Get current year
-    SET year_str = YEAR(CURDATE());
-    
-    -- Get next sequence number for this year
-    SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_number, LENGTH(CONCAT(prefix, year_str, '-')) + 1) AS UNSIGNED)), 0) + 1
-    INTO sequence_num
-    FROM invoices 
-    WHERE user_id = user_id_param AND invoice_number LIKE CONCAT(prefix, year_str, '-%');
-    
-    -- Generate invoice number
-    SET invoice_number = CONCAT(prefix, year_str, '-', LPAD(sequence_num, 4, '0'));
-END //
-
-DELIMITER ;
-
--- Create triggers for audit logging
-DELIMITER //
-
-CREATE TRIGGER audit_users_insert AFTER INSERT ON users
-FOR EACH ROW
-BEGIN
-    INSERT INTO audit_log (user_id, action, table_name, record_id, new_values)
-    VALUES (NEW.id, 'INSERT', 'users', NEW.id, JSON_OBJECT(
-        'username', NEW.username,
-        'email', NEW.email,
-        'role', NEW.role,
-        'status', NEW.status
-    ));
-END //
-
-CREATE TRIGGER audit_users_update AFTER UPDATE ON users
-FOR EACH ROW
-BEGIN
-    INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
-    VALUES (NEW.id, 'UPDATE', 'users', NEW.id, 
-        JSON_OBJECT(
-            'username', OLD.username,
-            'email', OLD.email,
-            'role', OLD.role,
-            'status', OLD.status
-        ),
-        JSON_OBJECT(
-            'username', NEW.username,
-            'email', NEW.email,
-            'role', NEW.role,
-            'status', NEW.status
-        )
-    );
-END //
-
-DELIMITER ; 
+('company_bank', 'Bank Name\nIBAN: DE12345678901234567890\nBIC: DEUTDEDB123', 'string'); 
