@@ -2,8 +2,8 @@
 -- Supports both German (abrechnung-portal.de) and English (billing-pages.com)
 
 -- Create database
-CREATE DATABASE IF NOT EXISTS billing_portal CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE billing_portal;
+CREATE DATABASE IF NOT EXISTS billing_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE billing_system;
 
 -- Users table
 CREATE TABLE users (

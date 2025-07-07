@@ -34,98 +34,148 @@ class DashboardController
     public function index(): void
     {
         $userId = $this->session->getUserId();
-        $userRole = $this->session->getUserRole();
-
-        // Get dashboard statistics
-        $stats = $this->getDashboardStats($userId, $userRole);
         
-        // Get recent entries
-        $recentEntries = $this->getRecentEntries($userId, $userRole);
+        // Get dashboard statistics
+        $stats = $this->getDashboardStats($userId);
+        
+        // Get recent activities
+        $recentActivities = $this->getRecentActivities($userId);
+        
+        // Get chart data
+        $chartData = $this->getChartData($userId);
 
         $this->render('dashboard/index', [
             'title' => $this->localization->get('dashboard'),
             'locale' => $this->localization->getLocale(),
+            'localization' => $this->localization,
             'stats' => $stats,
-            'recentEntries' => $recentEntries,
-            'user' => [
-                'username' => $this->session->getUsername(),
-                'role' => $userRole,
-                'domain' => $this->session->getDomain()
-            ]
+            'recentActivities' => $recentActivities,
+            'chartData' => $chartData
         ]);
+    }
+
+    /**
+     * Redirect to dashboard (for placeholder routes)
+     */
+    public function redirectToDashboard(): void
+    {
+        header('Location: /dashboard');
+        exit;
     }
 
     /**
      * Get dashboard statistics
      */
-    private function getDashboardStats(int $userId, string $userRole): array
+    private function getDashboardStats(int $userId): array
     {
         $stats = [];
 
-        // Get total revenue
-        $sql = "SELECT SUM(amount) as total FROM money_entries WHERE user_id = ?";
+        // Total companies
+        $sql = "SELECT COUNT(*) as total FROM companies WHERE user_id = ?";
         $result = $this->database->queryOne($sql, [$userId]);
-        $stats['total_revenue'] = $result['total'] ?? 0;
+        $stats['total_companies'] = $result['total'] ?? 0;
 
-        // Get total invoices
-        $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+        // Total work hours this month
+        $sql = "SELECT SUM(work_hours) as total FROM work_entries 
+                WHERE user_id = ? AND DATE_FORMAT(work_date, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')";
         $result = $this->database->queryOne($sql, [$userId]);
-        $stats['total_invoices'] = $result['total'] ?? 0;
+        $stats['work_hours_month'] = $result['total'] ?? 0;
 
-        // Get pending amount
-        $sql = "SELECT SUM(amount) as total FROM money_entries WHERE user_id = ? AND status = 'pending'";
+        // Total earnings this month
+        $sql = "SELECT SUM(work_total) as total FROM work_entries 
+                WHERE user_id = ? AND DATE_FORMAT(work_date, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')";
         $result = $this->database->queryOne($sql, [$userId]);
-        $stats['pending_amount'] = $result['total'] ?? 0;
+        $stats['earnings_month'] = $result['total'] ?? 0;
 
-        // Get overdue invoices
-        $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ? AND due_date < CURDATE() AND status != 'paid'";
+        // Pending invoices
+        $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ? AND status IN ('draft', 'sent')";
         $result = $this->database->queryOne($sql, [$userId]);
-        $stats['overdue_invoices'] = $result['total'] ?? 0;
-
-        // Get pending tasks
-        $sql = "SELECT COUNT(*) as total FROM tasks WHERE user_id = ? AND status = 'pending'";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['pending_tasks'] = $result['total'] ?? 0;
-
-        // Get recent companies
-        $sql = "SELECT COUNT(*) as total FROM companies WHERE user_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['recent_companies'] = $result['total'] ?? 0;
+        $stats['pending_invoices'] = $result['total'] ?? 0;
 
         return $stats;
     }
 
     /**
-     * Get recent entries for dashboard
+     * Get recent activities
      */
-    private function getRecentEntries(int $userId, string $userRole): array
+    private function getRecentActivities(int $userId): array
     {
-        $entries = [];
+        $activities = [];
 
-        // Get recent money entries
-        $sql = "SELECT id, amount, description, created_at, 'money' as type FROM money_entries 
-                WHERE user_id = ? ORDER BY created_at DESC LIMIT 5";
-        $moneyEntries = $this->database->query($sql, [$userId]);
-        $entries = array_merge($entries, $moneyEntries);
-
-        // Get recent work entries
-        $sql = "SELECT id, work_hours as amount, work_description as description, work_date as created_at, 'work' as type 
+        // Recent work entries
+        $sql = "SELECT 'work' as type, work_date as date, work_description as description, work_total as amount 
                 FROM work_entries WHERE user_id = ? ORDER BY work_date DESC LIMIT 5";
         $workEntries = $this->database->query($sql, [$userId]);
-        $entries = array_merge($entries, $workEntries);
+        $activities = array_merge($activities, $workEntries);
 
-        // Get recent task entries
-        $sql = "SELECT id, 0 as amount, task_name as description, created_at, 'task' as type 
-                FROM tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 5";
-        $taskEntries = $this->database->query($sql, [$userId]);
-        $entries = array_merge($entries, $taskEntries);
+        // Recent money entries
+        $sql = "SELECT 'money' as type, payment_date as date, description, amount 
+                FROM money_entries WHERE user_id = ? ORDER BY payment_date DESC LIMIT 5";
+        $moneyEntries = $this->database->query($sql, [$userId]);
+        $activities = array_merge($activities, $moneyEntries);
 
-        // Sort by creation date and limit to 10
-        usort($entries, function($a, $b) {
-            return strtotime($b['created_at']) - strtotime($a['created_at']);
+        // Sort by date and limit to 10
+        usort($activities, function($a, $b) {
+            return strtotime($b['date']) - strtotime($a['date']);
         });
 
-        return array_slice($entries, 0, 10);
+        return array_slice($activities, 0, 10);
+    }
+
+    /**
+     * Get chart data
+     */
+    private function getChartData(int $userId): array
+    {
+        $chartData = [];
+
+        // Monthly earnings for the last 12 months
+        $sql = "SELECT DATE_FORMAT(work_date, '%Y-%m') as month, SUM(work_total) as total 
+                FROM work_entries 
+                WHERE user_id = ? AND work_date >= DATE_SUB(NOW(), INTERVAL 12 MONTH)
+                GROUP BY DATE_FORMAT(work_date, '%Y-%m')
+                ORDER BY month";
+        $monthlyEarnings = $this->database->query($sql, [$userId]);
+        
+        $chartData['monthly_earnings'] = $monthlyEarnings;
+
+        // Work hours by type
+        $sql = "SELECT work_type, SUM(work_hours) as total 
+                FROM work_entries 
+                WHERE user_id = ? AND work_type IS NOT NULL
+                GROUP BY work_type
+                ORDER BY total DESC";
+        $workByType = $this->database->query($sql, [$userId]);
+        
+        $chartData['work_by_type'] = $workByType;
+
+        return $chartData;
+    }
+
+    /**
+     * Get stats via API
+     */
+    public function getStats(): void
+    {
+        header('Content-Type: application/json');
+        
+        $userId = $this->session->getUserId();
+        $stats = $this->getDashboardStats($userId);
+        
+        echo json_encode(['success' => true, 'data' => $stats]);
+    }
+
+    /**
+     * Get chart data via API
+     */
+    public function getChartDataApi(): void
+    {
+        header('Content-Type: application/json');
+        
+        $userId = $this->session->getUserId();
+        $chartData = $this->getChartData($userId);
+        
+        echo json_encode(['success' => true, 'data' => $chartData]);
     }
 
     /**

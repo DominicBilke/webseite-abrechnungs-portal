@@ -60,7 +60,7 @@ class Application
         $this->router->get('/company/view/{id}', [CompanyController::class, 'view']);
         $this->router->get('/company/edit/{id}', [CompanyController::class, 'edit']);
         $this->router->post('/company/edit/{id}', [CompanyController::class, 'update']);
-        $this->router->delete('/company/delete/{id}', [CompanyController::class, 'delete']);
+        $this->router->post('/company/delete/{id}', [CompanyController::class, 'delete']);
 
         // Work routes
         $this->router->get('/work', [WorkController::class, 'index']);
@@ -71,7 +71,7 @@ class Application
         $this->router->get('/work/view/{id}', [WorkController::class, 'view']);
         $this->router->get('/work/edit/{id}', [WorkController::class, 'edit']);
         $this->router->post('/work/edit/{id}', [WorkController::class, 'update']);
-        $this->router->delete('/work/delete/{id}', [WorkController::class, 'delete']);
+        $this->router->post('/work/delete/{id}', [WorkController::class, 'delete']);
 
         // Money routes
         $this->router->get('/money', [MoneyController::class, 'index']);
@@ -82,7 +82,7 @@ class Application
         $this->router->get('/money/view/{id}', [MoneyController::class, 'view']);
         $this->router->get('/money/edit/{id}', [MoneyController::class, 'edit']);
         $this->router->post('/money/edit/{id}', [MoneyController::class, 'update']);
-        $this->router->delete('/money/delete/{id}', [MoneyController::class, 'delete']);
+        $this->router->post('/money/delete/{id}', [MoneyController::class, 'delete']);
 
         // Billing routes
         $this->router->get('/billing', [BillingController::class, 'index']);
@@ -92,37 +92,25 @@ class Application
         $this->router->get('/billing/view/{id}', [BillingController::class, 'view']);
         $this->router->get('/billing/edit/{id}', [BillingController::class, 'edit']);
         $this->router->post('/billing/edit/{id}', [BillingController::class, 'update']);
-        $this->router->delete('/billing/delete/{id}', [BillingController::class, 'delete']);
+        $this->router->post('/billing/delete/{id}', [BillingController::class, 'delete']);
         $this->router->get('/billing/data/{type}', [BillingController::class, 'getData']);
         $this->router->post('/billing/data/{type}', [BillingController::class, 'saveData']);
 
         // Tour routes (placeholder for future implementation)
-        $this->router->get('/tours', function() {
-            header('Location: /dashboard');
-            exit;
-        });
+        $this->router->get('/tours', [DashboardController::class, 'redirectToDashboard']);
 
         // Task routes (placeholder for future implementation)
-        $this->router->get('/tasks', function() {
-            header('Location: /dashboard');
-            exit;
-        });
+        $this->router->get('/tasks', [DashboardController::class, 'redirectToDashboard']);
 
         // User management routes (placeholder for future implementation)
-        $this->router->get('/users', function() {
-            header('Location: /dashboard');
-            exit;
-        });
+        $this->router->get('/users', [DashboardController::class, 'redirectToDashboard']);
 
         // Settings routes (placeholder for future implementation)
-        $this->router->get('/settings', function() {
-            header('Location: /dashboard');
-            exit;
-        });
+        $this->router->get('/settings', [DashboardController::class, 'redirectToDashboard']);
 
         // API routes for AJAX requests
         $this->router->get('/api/stats', [DashboardController::class, 'getStats']);
-        $this->router->get('/api/chart-data', [DashboardController::class, 'getChartData']);
+        $this->router->get('/api/chart-data', [DashboardController::class, 'getChartDataApi']);
         $this->router->post('/api/company/search', [CompanyController::class, 'search']);
         $this->router->post('/api/work/search', [WorkController::class, 'search']);
         $this->router->post('/api/money/search', [MoneyController::class, 'search']);

@@ -27,6 +27,30 @@ class Router
     }
 
     /**
+     * Add a PUT route
+     */
+    public function put(string $path, array $handler): void
+    {
+        $this->addRoute('PUT', $path, $handler);
+    }
+
+    /**
+     * Add a PATCH route
+     */
+    public function patch(string $path, array $handler): void
+    {
+        $this->addRoute('PATCH', $path, $handler);
+    }
+
+    /**
+     * Add a DELETE route
+     */
+    public function delete(string $path, array $handler): void
+    {
+        $this->addRoute('DELETE', $path, $handler);
+    }
+
+    /**
      * Add a route
      */
     private function addRoute(string $method, string $path, array $handler): void
