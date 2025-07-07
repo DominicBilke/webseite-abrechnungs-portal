@@ -86,13 +86,4 @@ class AuthController extends BaseController
 
         return null;
     }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
-    }
 } 

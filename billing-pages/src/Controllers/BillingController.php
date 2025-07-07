@@ -10,7 +10,7 @@ use TCPDF;
 /**
  * Billing Controller - Handles invoice generation and PDF creation
  */
-class BillingController
+class BillingController extends BaseController
 {
     private Database $database;
     private Session $session;
@@ -18,6 +18,8 @@ class BillingController
 
     public function __construct()
     {
+        parent::__construct();
+        
         $this->database = Database::getInstance();
         $this->session = new Session();
         $this->localization = new Localization();
@@ -34,419 +36,139 @@ class BillingController
      */
     public function index(): void
     {
+        $this->overview();
+    }
+
+    /**
+     * Show billing overview
+     */
+    public function overview(): void
+    {
         $userId = $this->session->getUserId();
-        
-        // Get recent invoices
-        $sql = "SELECT * FROM invoices WHERE user_id = ? ORDER BY created_at DESC LIMIT 10";
-        $invoices = $this->database->query($sql, [$userId]);
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 20;
+        $offset = ($page - 1) * $limit;
 
-        // Get billing statistics
-        $stats = $this->getBillingStats($userId);
+        // Get invoices with company info and pagination
+        $sql = "SELECT i.*, c.company_name FROM invoices i 
+                LEFT JOIN companies c ON i.client_id = c.id 
+                WHERE i.user_id = ? ORDER BY i.invoice_date DESC LIMIT ? OFFSET ?";
+        $invoices = $this->database->query($sql, [$userId, $limit, $offset]);
 
-        $this->render('billing/index', [
-            'title' => $this->localization->get('nav_billing'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
+        // Get total count for pagination
+        $countSql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+        $totalResult = $this->database->queryOne($countSql, [$userId]);
+        $total = $totalResult['total'] ?? 0;
+        $totalPages = ceil($total / $limit);
+
+        $this->render('billing/overview', [
+            'title' => $this->localization->get('billing') . ' - ' . $this->localization->get('overview'),
             'invoices' => $invoices,
-            'stats' => $stats
+            'pagination' => [
+                'current' => $page,
+                'total' => $totalPages,
+                'total_records' => $total
+            ]
         ]);
     }
 
     /**
-     * Generate invoice
+     * Show create invoice form
      */
-    public function generate(string $type, int $id): void
+    public function showCreate(): void
     {
         $userId = $this->session->getUserId();
         
+        // Get companies for dropdown
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+
+        // Get work entries for billing
+        $sql = "SELECT w.*, c.company_name FROM work_entries w 
+                LEFT JOIN companies c ON w.company_id = c.id 
+                WHERE w.user_id = ? AND w.billed = 0 
+                ORDER BY w.work_date DESC";
+        $workEntries = $this->database->query($sql, [$userId]);
+
+        $this->render('billing/create', [
+            'title' => $this->localization->get('create') . ' ' . $this->localization->get('invoice'),
+            'companies' => $companies,
+            'workEntries' => $workEntries
+        ]);
+    }
+
+    /**
+     * Create new invoice
+     */
+    public function create(): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Validate input
+        $clientId = (int)($_POST['client_id'] ?? 0);
+        $invoiceDate = trim($_POST['invoice_date'] ?? date('Y-m-d'));
+        $dueDate = trim($_POST['due_date'] ?? '');
+        $workEntryIds = $_POST['work_entries'] ?? [];
+        $notes = trim($_POST['notes'] ?? '');
+
+        if (empty($clientId) || empty($workEntryIds)) {
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
+            header('Location: /billing/create');
+            exit;
+        }
+
+        // Calculate invoice total
+        $total = 0;
+        $workEntries = [];
+        
+        foreach ($workEntryIds as $workId) {
+            $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ? AND billed = 0";
+            $workEntry = $this->database->queryOne($sql, [$workId, $userId]);
+            
+            if ($workEntry) {
+                $total += $workEntry['work_total'];
+                $workEntries[] = $workEntry;
+            }
+        }
+
+        if (empty($workEntries)) {
+            $this->session->setFlash('error', $this->localization->get('error_no_work_entries'));
+            header('Location: /billing/create');
+            exit;
+        }
+
+        // Generate invoice number
+        $invoiceNumber = $this->generateInvoiceNumber($userId);
+
+        // Create invoice
+        $sql = "INSERT INTO invoices (user_id, client_id, invoice_number, invoice_date, due_date, 
+                total, notes, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft')";
+        
         try {
-            switch ($type) {
-                case 'company':
-                    $invoice = $this->generateCompanyInvoice($userId, $id);
-                    break;
-                case 'work':
-                    $invoice = $this->generateWorkInvoice($userId, $id);
-                    break;
-                case 'tour':
-                    $invoice = $this->generateTourInvoice($userId, $id);
-                    break;
-                case 'task':
-                    $invoice = $this->generateTaskInvoice($userId, $id);
-                    break;
-                case 'money':
-                    $invoice = $this->generateMoneyInvoice($userId, $id);
-                    break;
-                default:
-                    throw new \Exception('Invalid invoice type');
+            $this->database->execute($sql, [
+                $userId, $clientId, $invoiceNumber, $invoiceDate, $dueDate, $total, $notes
+            ]);
+            
+            $invoiceId = $this->database->lastInsertId();
+
+            // Mark work entries as billed
+            foreach ($workEntryIds as $workId) {
+                $sql = "UPDATE work_entries SET billed = 1, invoice_id = ? WHERE id = ? AND user_id = ?";
+                $this->database->execute($sql, [$invoiceId, $workId, $userId]);
             }
 
-            // Generate PDF
-            $pdf = $this->createPDF($invoice);
-            
-            // Output PDF
-            $filename = 'invoice_' . $invoice['invoice_number'] . '.pdf';
-            $pdf->Output($filename, 'D');
-            
+            $this->session->setFlash('success', $this->localization->get('success_invoice_created'));
+            header('Location: /billing/view/' . $invoiceId);
+            exit;
         } catch (\Exception $e) {
-            $this->session->setFlash('error', $this->localization->get('error_generate_invoice'));
-            header('Location: /billing');
+            $this->session->setFlash('error', $this->localization->get('error_save'));
+            header('Location: /billing/create');
             exit;
         }
     }
 
     /**
-     * Download invoice
-     */
-    public function download(int $id): void
-    {
-        $userId = $this->session->getUserId();
-        
-        // Get invoice
-        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
-        $invoice = $this->database->queryOne($sql, [$id, $userId]);
-        
-        if (!$invoice) {
-            $this->session->setFlash('error', $this->localization->get('error_not_found'));
-            header('Location: /billing');
-            exit;
-        }
-
-        // Get invoice items
-        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
-        $items = $this->database->query($sql, [$id]);
-        $invoice['items'] = $items;
-
-        // Generate PDF
-        $pdf = $this->createPDF($invoice);
-        
-        // Output PDF
-        $filename = 'invoice_' . $invoice['invoice_number'] . '.pdf';
-        $pdf->Output($filename, 'D');
-    }
-
-    /**
-     * Get billing data via API
-     */
-    public function getData(string $type): void
-    {
-        $userId = $this->session->getUserId();
-        
-        header('Content-Type: application/json');
-        
-        try {
-            switch ($type) {
-                case 'companies':
-                    $data = $this->getCompanies($userId);
-                    break;
-                case 'work':
-                    $data = $this->getWorkEntries($userId);
-                    break;
-                case 'tours':
-                    $data = $this->getTours($userId);
-                    break;
-                case 'tasks':
-                    $data = $this->getTasks($userId);
-                    break;
-                case 'money':
-                    $data = $this->getMoneyEntries($userId);
-                    break;
-                default:
-                    throw new \Exception('Invalid data type');
-            }
-            
-            echo json_encode(['success' => true, 'data' => $data]);
-            
-        } catch (\Exception $e) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Save billing data via API
-     */
-    public function saveData(string $type): void
-    {
-        $userId = $this->session->getUserId();
-        
-        header('Content-Type: application/json');
-        
-        try {
-            $input = json_decode(file_get_contents('php://input'), true);
-            
-            switch ($type) {
-                case 'invoice':
-                    $result = $this->saveInvoice($userId, $input);
-                    break;
-                default:
-                    throw new \Exception('Invalid data type');
-            }
-            
-            echo json_encode(['success' => true, 'data' => $result]);
-            
-        } catch (\Exception $e) {
-            http_response_code(400);
-            echo json_encode(['success' => false, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Generate company invoice
-     */
-    private function generateCompanyInvoice(int $userId, int $companyId): array
-    {
-        // Get company data
-        $sql = "SELECT * FROM companies WHERE id = ? AND user_id = ?";
-        $company = $this->database->queryOne($sql, [$companyId, $userId]);
-        
-        if (!$company) {
-            throw new \Exception('Company not found');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Create invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                client_address, client_email, subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, ?, ?, ?, 'EUR', 'draft')";
-        
-        $subtotal = 0; // Calculate based on company billing
-        $taxRate = 19.00;
-        $taxAmount = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxAmount;
-
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $company['company_name'], $company['company_address'],
-            $company['company_email'], $subtotal, $taxRate, $taxAmount, $total
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber,
-            'invoice_date' => date('Y-m-d'),
-            'due_date' => date('Y-m-d', strtotime('+30 days')),
-            'client_name' => $company['company_name'],
-            'client_address' => $company['company_address'],
-            'client_email' => $company['company_email'],
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
-            'currency' => 'EUR',
-            'items' => []
-        ];
-    }
-
-    /**
-     * Generate work invoice
-     */
-    private function generateWorkInvoice(int $userId, int $workId): array
-    {
-        // Get work entry data
-        $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ?";
-        $work = $this->database->queryOne($sql, [$workId, $userId]);
-        
-        if (!$work) {
-            throw new \Exception('Work entry not found');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Create invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, ?, 'EUR', 'draft')";
-        
-        $subtotal = $work['work_total'];
-        $taxRate = 19.00;
-        $taxAmount = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxAmount;
-
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $work['work_client'] ?? 'Client', 
-            $subtotal, $taxRate, $taxAmount, $total
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        // Add invoice item
-        $sql = "INSERT INTO invoice_items (invoice_id, description, quantity, unit_price, total) 
-                VALUES (?, ?, ?, ?, ?)";
-        $this->database->execute($sql, [
-            $invoiceId, $work['work_description'], $work['work_hours'], 
-            $work['work_rate'], $work['work_total']
-        ]);
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber,
-            'invoice_date' => date('Y-m-d'),
-            'due_date' => date('Y-m-d', strtotime('+30 days')),
-            'client_name' => $work['work_client'] ?? 'Client',
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
-            'currency' => 'EUR',
-            'items' => [[
-                'description' => $work['work_description'],
-                'quantity' => $work['work_hours'],
-                'unit_price' => $work['work_rate'],
-                'total' => $work['work_total']
-            ]]
-        ];
-    }
-
-    /**
-     * Generate tour invoice
-     */
-    private function generateTourInvoice(int $userId, int $tourId): array
-    {
-        // Get tour data
-        $sql = "SELECT * FROM tours WHERE id = ? AND user_id = ?";
-        $tour = $this->database->queryOne($sql, [$tourId, $userId]);
-        
-        if (!$tour) {
-            throw new \Exception('Tour not found');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Create invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, ?, 'EUR', 'draft')";
-        
-        $subtotal = $tour['tour_total'];
-        $taxRate = 19.00;
-        $taxAmount = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxAmount;
-
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $tour['tour_name'], 
-            $subtotal, $taxRate, $taxAmount, $total
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber,
-            'invoice_date' => date('Y-m-d'),
-            'due_date' => date('Y-m-d', strtotime('+30 days')),
-            'client_name' => $tour['tour_name'],
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
-            'currency' => 'EUR',
-            'items' => []
-        ];
-    }
-
-    /**
-     * Generate task invoice
-     */
-    private function generateTaskInvoice(int $userId, int $taskId): array
-    {
-        // Get task data
-        $sql = "SELECT * FROM tasks WHERE id = ? AND user_id = ?";
-        $task = $this->database->queryOne($sql, [$taskId, $userId]);
-        
-        if (!$task) {
-            throw new \Exception('Task not found');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Create invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, ?, 'EUR', 'draft')";
-        
-        $subtotal = $task['task_total'];
-        $taxRate = 19.00;
-        $taxAmount = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxAmount;
-
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $task['task_name'], 
-            $subtotal, $taxRate, $taxAmount, $total
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber,
-            'invoice_date' => date('Y-m-d'),
-            'due_date' => date('Y-m-d', strtotime('+30 days')),
-            'client_name' => $task['task_name'],
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
-            'currency' => 'EUR',
-            'items' => []
-        ];
-    }
-
-    /**
-     * Generate money invoice
-     */
-    private function generateMoneyInvoice(int $userId, int $moneyId): array
-    {
-        // Get money entry data
-        $sql = "SELECT * FROM money_entries WHERE id = ? AND user_id = ?";
-        $money = $this->database->queryOne($sql, [$moneyId, $userId]);
-        
-        if (!$money) {
-            throw new \Exception('Money entry not found');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Create invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), ?, ?, ?, ?, ?, ?, 'draft')";
-        
-        $subtotal = abs($money['amount']);
-        $taxRate = 19.00;
-        $taxAmount = $subtotal * ($taxRate / 100);
-        $total = $subtotal + $taxAmount;
-
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $money['description'], 
-            $subtotal, $taxRate, $taxAmount, $total, $money['currency']
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber,
-            'invoice_date' => date('Y-m-d'),
-            'due_date' => date('Y-m-d', strtotime('+30 days')),
-            'client_name' => $money['description'],
-            'subtotal' => $subtotal,
-            'tax_rate' => $taxRate,
-            'tax_amount' => $taxAmount,
-            'total' => $total,
-            'currency' => $money['currency'],
-            'items' => []
-        ];
-    }
-
-    /**
-     * Generate invoice number
+     * Generate unique invoice number
      */
     private function generateInvoiceNumber(int $userId): string
     {
@@ -459,405 +181,204 @@ class BillingController
     }
 
     /**
-     * Create PDF invoice
-     */
-    private function createPDF(array $invoice): TCPDF
-    {
-        // Create new PDF document
-        $pdf = new TCPDF(PDF_PAGE_ORIENTATION, PDF_UNIT, PDF_PAGE_FORMAT, true, 'UTF-8', false);
-
-        // Set document information
-        $pdf->SetCreator('Billing Portal');
-        $pdf->SetAuthor('Billing Portal');
-        $pdf->SetTitle('Invoice ' . $invoice['invoice_number']);
-
-        // Set default header data
-        $pdf->SetHeaderData('', 0, 'INVOICE', $invoice['invoice_number']);
-
-        // Set header and footer fonts
-        $pdf->setHeaderFont([PDF_FONT_NAME_MAIN, '', PDF_FONT_SIZE_MAIN]);
-        $pdf->setFooterFont([PDF_FONT_NAME_DATA, '', PDF_FONT_SIZE_DATA]);
-
-        // Set default monospaced font
-        $pdf->SetDefaultMonospacedFont(PDF_FONT_MONOSPACED);
-
-        // Set margins
-        $pdf->SetMargins(PDF_MARGIN_LEFT, PDF_MARGIN_TOP, PDF_MARGIN_RIGHT);
-        $pdf->SetHeaderMargin(PDF_MARGIN_HEADER);
-        $pdf->SetFooterMargin(PDF_MARGIN_FOOTER);
-
-        // Set auto page breaks
-        $pdf->SetAutoPageBreak(TRUE, PDF_MARGIN_BOTTOM);
-
-        // Set image scale factor
-        $pdf->setImageScale(PDF_IMAGE_SCALE_RATIO);
-
-        // Add a page
-        $pdf->AddPage();
-
-        // Set font
-        $pdf->SetFont('helvetica', '', 10);
-
-        // Invoice content
-        $html = $this->generateInvoiceHTML($invoice);
-        $pdf->writeHTML($html, true, false, true, false, '');
-
-        return $pdf;
-    }
-
-    /**
-     * Generate invoice HTML
-     */
-    private function generateInvoiceHTML(array $invoice): string
-    {
-        $html = '
-        <table cellpadding="5" cellspacing="0" style="width: 100%; border: 1px solid #ddd;">
-            <tr>
-                <td style="width: 50%;">
-                    <h2>INVOICE</h2>
-                    <strong>Invoice Number:</strong> ' . $invoice['invoice_number'] . '<br>
-                    <strong>Date:</strong> ' . $invoice['invoice_date'] . '<br>
-                    <strong>Due Date:</strong> ' . $invoice['due_date'] . '
-                </td>
-                <td style="width: 50%; text-align: right;">
-                    <strong>Bill To:</strong><br>
-                    ' . htmlspecialchars($invoice['client_name']) . '<br>
-                    ' . htmlspecialchars($invoice['client_address'] ?? '') . '<br>
-                    ' . htmlspecialchars($invoice['client_email'] ?? '') . '
-                </td>
-            </tr>
-        </table>
-        
-        <br><br>
-        
-        <table cellpadding="5" cellspacing="0" style="width: 100%; border: 1px solid #ddd;">
-            <tr style="background-color: #f5f5f5;">
-                <th style="border: 1px solid #ddd; text-align: left;">Description</th>
-                <th style="border: 1px solid #ddd; text-align: right;">Quantity</th>
-                <th style="border: 1px solid #ddd; text-align: right;">Unit Price</th>
-                <th style="border: 1px solid #ddd; text-align: right;">Total</th>
-            </tr>';
-
-        if (!empty($invoice['items'])) {
-            foreach ($invoice['items'] as $item) {
-                $html .= '
-                <tr>
-                    <td style="border: 1px solid #ddd;">' . htmlspecialchars($item['description']) . '</td>
-                    <td style="border: 1px solid #ddd; text-align: right;">' . $item['quantity'] . '</td>
-                    <td style="border: 1px solid #ddd; text-align: right;">' . number_format($item['unit_price'], 2) . '</td>
-                    <td style="border: 1px solid #ddd; text-align: right;">' . number_format($item['total'], 2) . '</td>
-                </tr>';
-            }
-        } else {
-            $html .= '
-            <tr>
-                <td style="border: 1px solid #ddd;" colspan="4">' . htmlspecialchars($invoice['client_name']) . '</td>
-            </tr>';
-        }
-
-        $html .= '
-            <tr>
-                <td colspan="3" style="border: 1px solid #ddd; text-align: right;"><strong>Subtotal:</strong></td>
-                <td style="border: 1px solid #ddd; text-align: right;">' . number_format($invoice['subtotal'], 2) . '</td>
-            </tr>
-            <tr>
-                <td colspan="3" style="border: 1px solid #ddd; text-align: right;"><strong>Tax (' . $invoice['tax_rate'] . '%):</strong></td>
-                <td style="border: 1px solid #ddd; text-align: right;">' . number_format($invoice['tax_amount'], 2) . '</td>
-            </tr>
-            <tr>
-                <td colspan="3" style="border: 1px solid #ddd; text-align: right;"><strong>Total:</strong></td>
-                <td style="border: 1px solid #ddd; text-align: right;"><strong>' . number_format($invoice['total'], 2) . ' ' . $invoice['currency'] . '</strong></td>
-            </tr>
-        </table>';
-
-        return $html;
-    }
-
-    /**
-     * Get billing statistics
-     */
-    private function getBillingStats(int $userId): array
-    {
-        $stats = [];
-
-        // Total invoices
-        $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['total_invoices'] = $result['total'] ?? 0;
-
-        // Total amount
-        $sql = "SELECT SUM(total) as total FROM invoices WHERE user_id = ?";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['total_amount'] = $result['total'] ?? 0;
-
-        // Paid invoices
-        $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ? AND status = 'paid'";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['paid_invoices'] = $result['total'] ?? 0;
-
-        // Pending amount
-        $sql = "SELECT SUM(total) as total FROM invoices WHERE user_id = ? AND status IN ('draft', 'sent')";
-        $result = $this->database->queryOne($sql, [$userId]);
-        $stats['pending_amount'] = $result['total'] ?? 0;
-
-        return $stats;
-    }
-
-    /**
-     * Get companies for API
-     */
-    private function getCompanies(int $userId): array
-    {
-        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
-        return $this->database->query($sql, [$userId]);
-    }
-
-    /**
-     * Get work entries for API
-     */
-    private function getWorkEntries(int $userId): array
-    {
-        $sql = "SELECT id, work_description, work_total, work_date FROM work_entries WHERE user_id = ? ORDER BY work_date DESC";
-        return $this->database->query($sql, [$userId]);
-    }
-
-    /**
-     * Get tours for API
-     */
-    private function getTours(int $userId): array
-    {
-        $sql = "SELECT id, tour_name, tour_total, tour_date FROM tours WHERE user_id = ? ORDER BY tour_date DESC";
-        return $this->database->query($sql, [$userId]);
-    }
-
-    /**
-     * Get tasks for API
-     */
-    private function getTasks(int $userId): array
-    {
-        $sql = "SELECT id, task_name, task_total FROM tasks WHERE user_id = ? ORDER BY created_at DESC";
-        return $this->database->query($sql, [$userId]);
-    }
-
-    /**
-     * Get money entries for API
-     */
-    private function getMoneyEntries(int $userId): array
-    {
-        $sql = "SELECT id, description, amount FROM money_entries WHERE user_id = ? ORDER BY payment_date DESC";
-        return $this->database->query($sql, [$userId]);
-    }
-
-    /**
-     * Save invoice
-     */
-    private function saveInvoice(int $userId, array $data): array
-    {
-        // Validate required fields
-        if (empty($data['client_name']) || empty($data['total'])) {
-            throw new \Exception('Missing required fields');
-        }
-
-        // Generate invoice number
-        $invoiceNumber = $this->generateInvoiceNumber($userId);
-
-        // Insert invoice
-        $sql = "INSERT INTO invoices (user_id, invoice_number, invoice_date, due_date, client_name, 
-                client_address, client_email, subtotal, tax_rate, tax_amount, total, currency, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft')";
-        
-        $this->database->execute($sql, [
-            $userId, $invoiceNumber, $data['invoice_date'] ?? date('Y-m-d'),
-            $data['due_date'] ?? date('Y-m-d', strtotime('+30 days')),
-            $data['client_name'], $data['client_address'] ?? '', $data['client_email'] ?? '',
-            $data['subtotal'] ?? $data['total'], $data['tax_rate'] ?? 19.00,
-            $data['tax_amount'] ?? 0, $data['total'], $data['currency'] ?? 'EUR'
-        ]);
-
-        $invoiceId = $this->database->lastInsertId();
-
-        return [
-            'id' => $invoiceId,
-            'invoice_number' => $invoiceNumber
-        ];
-    }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
-    }
-
-    /**
-     * Show all invoices
-     */
-    public function all(): void
-    {
-        $userId = $this->session->getUserId();
-        $page = (int)($_GET['page'] ?? 1);
-        $limit = 20;
-        $offset = ($page - 1) * $limit;
-
-        // Get filters
-        $status = $_GET['status'] ?? '';
-        $fromDate = $_GET['from_date'] ?? '';
-        $toDate = $_GET['to_date'] ?? '';
-
-        // Build WHERE clause
-        $whereConditions = ['user_id = ?'];
-        $params = [$userId];
-
-        if (!empty($status) && $status !== 'all') {
-            $whereConditions[] = 'status = ?';
-            $params[] = $status;
-        }
-
-        if (!empty($fromDate)) {
-            $whereConditions[] = 'invoice_date >= ?';
-            $params[] = $fromDate;
-        }
-
-        if (!empty($toDate)) {
-            $whereConditions[] = 'invoice_date <= ?';
-            $params[] = $toDate;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        // Get invoices with pagination
-        $sql = "SELECT * FROM invoices WHERE {$whereClause} ORDER BY invoice_date DESC LIMIT ? OFFSET ?";
-        $params[] = $limit;
-        $params[] = $offset;
-        $invoices = $this->database->query($sql, $params);
-
-        // Get total count for pagination
-        $countSql = "SELECT COUNT(*) as total FROM invoices WHERE {$whereClause}";
-        $totalResult = $this->database->queryOne($countSql, array_slice($params, 0, -2));
-        $total = $totalResult['total'] ?? 0;
-        $totalPages = ceil($total / $limit);
-
-        $this->render('billing/all', [
-            'title' => $this->localization->get('all') . ' ' . $this->localization->get('invoices'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'invoices' => $invoices,
-            'pagination' => [
-                'current' => $page,
-                'total' => $totalPages,
-                'total_records' => $total
-            ],
-            'filters' => [
-                'status' => $status,
-                'from_date' => $fromDate,
-                'to_date' => $toDate
-            ]
-        ]);
-    }
-
-    /**
-     * Show invoice details
+     * View invoice details
      */
     public function view(int $id): void
     {
         $userId = $this->session->getUserId();
         
-        // Get invoice details
-        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
+        // Get invoice with company info
+        $sql = "SELECT i.*, c.company_name, c.company_address, c.company_contact 
+                FROM invoices i 
+                LEFT JOIN companies c ON i.client_id = c.id 
+                WHERE i.id = ? AND i.user_id = ?";
         $invoice = $this->database->queryOne($sql, [$id, $userId]);
         
         if (!$invoice) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
-            header('Location: /billing');
+            header('Location: /billing/overview');
             exit;
         }
 
-        // Get invoice items
-        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
-        $items = $this->database->query($sql, [$id]);
+        // Get work entries for this invoice
+        $sql = "SELECT * FROM work_entries WHERE invoice_id = ? AND user_id = ? ORDER BY work_date";
+        $workEntries = $this->database->query($sql, [$id, $userId]);
 
         $this->render('billing/view', [
             'title' => $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'invoice' => $invoice,
-            'items' => $items
+            'workEntries' => $workEntries
         ]);
     }
 
     /**
-     * Show edit invoice form
+     * Generate PDF invoice
      */
-    public function edit(int $id): void
+    public function generatePdf(int $id): void
     {
         $userId = $this->session->getUserId();
         
-        // Get invoice details
-        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
+        // Get invoice with company info
+        $sql = "SELECT i.*, c.company_name, c.company_address, c.company_contact 
+                FROM invoices i 
+                LEFT JOIN companies c ON i.client_id = c.id 
+                WHERE i.id = ? AND i.user_id = ?";
         $invoice = $this->database->queryOne($sql, [$id, $userId]);
         
         if (!$invoice) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
-            header('Location: /billing');
+            header('Location: /billing/overview');
             exit;
         }
 
-        // Get invoice items
-        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
-        $items = $this->database->query($sql, [$id]);
+        // Get work entries for this invoice
+        $sql = "SELECT * FROM work_entries WHERE invoice_id = ? AND user_id = ? ORDER BY work_date";
+        $workEntries = $this->database->query($sql, [$id, $userId]);
 
-        $this->render('billing/edit', [
-            'title' => $this->localization->get('edit') . ' ' . $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'invoice' => $invoice,
-            'items' => $items
-        ]);
+        // Generate PDF
+        $pdf = $this->createInvoicePdf($invoice, $workEntries);
+        
+        // Output PDF
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="invoice-' . $invoice['invoice_number'] . '.pdf"');
+        echo $pdf;
     }
 
     /**
-     * Update invoice
+     * Create invoice PDF
      */
-    public function update(int $id): void
+    private function createInvoicePdf(array $invoice, array $workEntries): string
+    {
+        // This is a simplified PDF generation
+        // In a real application, you would use a proper PDF library like TCPDF or FPDF
+        
+        $html = '<html><head><style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .header { text-align: center; margin-bottom: 30px; }
+            .invoice-info { margin-bottom: 20px; }
+            .client-info { margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .total { text-align: right; font-weight: bold; }
+        </style></head><body>';
+        
+        $html .= '<div class="header"><h1>INVOICE</h1></div>';
+        $html .= '<div class="invoice-info">';
+        $html .= '<p><strong>Invoice Number:</strong> ' . htmlspecialchars($invoice['invoice_number']) . '</p>';
+        $html .= '<p><strong>Date:</strong> ' . htmlspecialchars($invoice['invoice_date']) . '</p>';
+        $html .= '<p><strong>Due Date:</strong> ' . htmlspecialchars($invoice['due_date']) . '</p>';
+        $html .= '</div>';
+        
+        $html .= '<div class="client-info">';
+        $html .= '<h3>Bill To:</h3>';
+        $html .= '<p>' . htmlspecialchars($invoice['company_name']) . '</p>';
+        $html .= '<p>' . htmlspecialchars($invoice['company_address']) . '</p>';
+        $html .= '<p>Contact: ' . htmlspecialchars($invoice['company_contact']) . '</p>';
+        $html .= '</div>';
+        
+        $html .= '<table>';
+        $html .= '<tr><th>Date</th><th>Description</th><th>Hours</th><th>Rate</th><th>Total</th></tr>';
+        
+        foreach ($workEntries as $work) {
+            $html .= '<tr>';
+            $html .= '<td>' . htmlspecialchars($work['work_date']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($work['work_description']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($work['work_hours']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($work['work_rate']) . '</td>';
+            $html .= '<td>' . htmlspecialchars($work['work_total']) . '</td>';
+            $html .= '</tr>';
+        }
+        
+        $html .= '</table>';
+        
+        $html .= '<div class="total">';
+        $html .= '<p><strong>Total: €' . number_format($invoice['total'], 2) . '</strong></p>';
+        $html .= '</div>';
+        
+        if (!empty($invoice['notes'])) {
+            $html .= '<div><h3>Notes:</h3><p>' . htmlspecialchars($invoice['notes']) . '</p></div>';
+        }
+        
+        $html .= '</body></html>';
+        
+        // For now, return HTML (in a real app, convert to PDF)
+        return $html;
+    }
+
+    /**
+     * Send invoice via email
+     */
+    public function sendEmail(int $id): void
     {
         $userId = $this->session->getUserId();
         
-        // Validate input
-        $clientName = trim($_POST['client_name'] ?? '');
-        $clientAddress = trim($_POST['client_address'] ?? '');
-        $clientEmail = trim($_POST['client_email'] ?? '');
-        $invoiceDate = trim($_POST['invoice_date'] ?? '');
-        $dueDate = trim($_POST['due_date'] ?? '');
-        $status = trim($_POST['status'] ?? 'draft');
-        $notes = trim($_POST['notes'] ?? '');
-
-        if (empty($clientName) || empty($invoiceDate)) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('client_name') . '/' . $this->localization->get('invoice_date')]));
-            header('Location: /billing/edit/' . $id);
+        // Get invoice with company info
+        $sql = "SELECT i.*, c.company_name, c.company_email 
+                FROM invoices i 
+                LEFT JOIN companies c ON i.client_id = c.id 
+                WHERE i.id = ? AND i.user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing/overview');
             exit;
         }
 
-        // Update invoice
-        $sql = "UPDATE invoices SET client_name = ?, client_address = ?, client_email = ?, 
-                invoice_date = ?, due_date = ?, status = ?, notes = ?, updated_at = NOW() 
-                WHERE id = ? AND user_id = ?";
+        if (empty($invoice['company_email'])) {
+            $this->session->setFlash('error', $this->localization->get('error_no_email'));
+            header('Location: /billing/view/' . $id);
+            exit;
+        }
+
+        // Update invoice status
+        $sql = "UPDATE invoices SET status = 'sent', sent_date = NOW() WHERE id = ? AND user_id = ?";
         
         try {
-            $this->database->execute($sql, [
-                $clientName, $clientAddress, $clientEmail, $invoiceDate,
-                $dueDate, $status, $notes, $id, $userId
-            ]);
-
-            $this->session->setFlash('success', $this->localization->get('success_updated'));
-            header('Location: /billing');
-            exit;
+            $this->database->execute($sql, [$id, $userId]);
+            
+            // In a real application, you would send the email here
+            // For now, just show success message
+            
+            $this->session->setFlash('success', $this->localization->get('success_invoice_sent'));
         } catch (\Exception $e) {
-            $this->session->setFlash('error', $this->localization->get('error_update'));
-            header('Location: /billing/edit/' . $id);
+            $this->session->setFlash('error', $this->localization->get('error_send'));
+        }
+        
+        header('Location: /billing/view/' . $id);
+        exit;
+    }
+
+    /**
+     * Mark invoice as paid
+     */
+    public function markPaid(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        
+        // Check if invoice exists and belongs to user
+        $sql = "SELECT id FROM invoices WHERE id = ? AND user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing/overview');
             exit;
         }
+
+        // Update invoice status
+        $sql = "UPDATE invoices SET status = 'paid', paid_date = NOW() WHERE id = ? AND user_id = ?";
+        
+        try {
+            $this->database->execute($sql, [$id, $userId]);
+            $this->session->setFlash('success', $this->localization->get('success_invoice_paid'));
+        } catch (\Exception $e) {
+            $this->session->setFlash('error', $this->localization->get('error_update'));
+        }
+        
+        header('Location: /billing/view/' . $id);
+        exit;
     }
 
     /**
@@ -873,25 +394,51 @@ class BillingController
         
         if (!$invoice) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
-            header('Location: /billing');
+            header('Location: /billing/overview');
             exit;
         }
 
-        // Delete invoice items first
-        $sql = "DELETE FROM invoice_items WHERE invoice_id = ?";
-        $this->database->execute($sql, [$id]);
-
-        // Delete invoice
-        $sql = "DELETE FROM invoices WHERE id = ? AND user_id = ?";
+        // Unmark work entries as billed
+        $sql = "UPDATE work_entries SET billed = 0, invoice_id = NULL WHERE invoice_id = ? AND user_id = ?";
         
         try {
             $this->database->execute($sql, [$id, $userId]);
+            
+            // Delete invoice
+            $sql = "DELETE FROM invoices WHERE id = ? AND user_id = ?";
+            $this->database->execute($sql, [$id, $userId]);
+            
             $this->session->setFlash('success', $this->localization->get('success_deleted'));
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_delete'));
         }
         
-        header('Location: /billing');
+        header('Location: /billing/overview');
         exit;
+    }
+
+    /**
+     * Search invoices
+     */
+    public function search(): void
+    {
+        $userId = $this->session->getUserId();
+        $query = trim($_POST['query'] ?? '');
+        
+        if (empty($query)) {
+            $this->jsonResponse(['success' => false, 'message' => 'Query is required']);
+        }
+
+        $sql = "SELECT i.id, i.invoice_number, i.invoice_date, i.total, i.status, c.company_name 
+                FROM invoices i 
+                LEFT JOIN companies c ON i.client_id = c.id 
+                WHERE i.user_id = ? AND (i.invoice_number LIKE ? OR c.company_name LIKE ?)
+                ORDER BY i.invoice_date DESC 
+                LIMIT 10";
+        
+        $searchTerm = "%{$query}%";
+        $results = $this->database->query($sql, [$userId, $searchTerm, $searchTerm]);
+        
+        $this->jsonResponse(['success' => true, 'data' => $results]);
     }
 } 

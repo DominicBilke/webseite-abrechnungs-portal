@@ -9,18 +9,12 @@ use BillingPages\Core\Localization;
 /**
  * Company Controller - Handles company billing operations
  */
-class CompanyController
+class CompanyController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
     public function __construct()
     {
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
-
+        parent::__construct();
+        
         // Check authentication
         if (!$this->session->isAuthenticated()) {
             header('Location: /');
@@ -42,9 +36,7 @@ class CompanyController
     public function showAdd(): void
     {
         $this->render('company/add', [
-            'title' => $this->localization->get('add') . ' ' . $this->localization->get('company'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization
+            'title' => $this->localization->get('add') . ' ' . $this->localization->get('company')
         ]);
     }
 
@@ -114,8 +106,6 @@ class CompanyController
 
         $this->render('company/overview', [
             'title' => $this->localization->get('companies') . ' - ' . $this->localization->get('overview'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'companies' => $companies,
             'pagination' => [
                 'current' => $page,
@@ -144,8 +134,6 @@ class CompanyController
 
         $this->render('company/reports', [
             'title' => $this->localization->get('companies') . ' - ' . $this->localization->get('reports'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'stats' => $stats,
             'companies' => $companies,
             'filters' => [
@@ -201,7 +189,7 @@ class CompanyController
     }
 
     /**
-     * Show company details
+     * View company details
      */
     public function view(int $id): void
     {
@@ -223,8 +211,6 @@ class CompanyController
 
         $this->render('company/view', [
             'title' => $company['company_name'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'company' => $company,
             'invoices' => $invoices
         ]);
@@ -249,8 +235,6 @@ class CompanyController
 
         $this->render('company/edit', [
             'title' => $this->localization->get('edit') . ' ' . $company['company_name'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'company' => $company
         ]);
     }
@@ -282,8 +266,7 @@ class CompanyController
         // Update company
         $sql = "UPDATE companies SET company_name = ?, company_address = ?, company_phone = ?, 
                 company_email = ?, company_contact = ?, company_vat = ?, company_registration = ?, 
-                company_bank = ?, status = ?, updated_at = NOW() 
-                WHERE id = ? AND user_id = ?";
+                company_bank = ?, status = ? WHERE id = ? AND user_id = ?";
         
         try {
             $this->database->execute($sql, [
@@ -293,7 +276,7 @@ class CompanyController
             ]);
 
             $this->session->setFlash('success', $this->localization->get('success_updated'));
-            header('Location: /company/overview');
+            header('Location: /company/view/' . $id);
             exit;
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_update'));
@@ -324,16 +307,16 @@ class CompanyController
         $result = $this->database->queryOne($sql, [$id]);
         
         if ($result['count'] > 0) {
-            $this->session->setFlash('error', $this->localization->get('error_company_has_invoices'));
+            $this->session->setFlash('error', $this->localization->get('error_delete') . ' - ' . $this->localization->get('company_has_invoices'));
             header('Location: /company/overview');
             exit;
         }
 
         // Delete company
-        $sql = "DELETE FROM companies WHERE id = ? AND user_id = ?";
-        
         try {
+            $sql = "DELETE FROM companies WHERE id = ? AND user_id = ?";
             $this->database->execute($sql, [$id, $userId]);
+            
             $this->session->setFlash('success', $this->localization->get('success_deleted'));
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_delete'));
@@ -344,18 +327,15 @@ class CompanyController
     }
 
     /**
-     * Search companies via API
+     * Search companies
      */
     public function search(): void
     {
-        header('Content-Type: application/json');
-        
         $userId = $this->session->getUserId();
         $query = trim($_POST['query'] ?? '');
         
         if (empty($query)) {
-            echo json_encode(['success' => true, 'data' => []]);
-            return;
+            $this->jsonResponse(['success' => false, 'message' => 'Query is required']);
         }
 
         $sql = "SELECT id, company_name, company_contact, company_email 
@@ -365,17 +345,8 @@ class CompanyController
                 LIMIT 10";
         
         $searchTerm = "%{$query}%";
-        $companies = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        $results = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
         
-        echo json_encode(['success' => true, 'data' => $companies]);
-    }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
+        $this->jsonResponse(['success' => true, 'data' => $results]);
     }
 } 

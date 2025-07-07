@@ -2,25 +2,15 @@
 
 namespace BillingPages\Controllers;
 
-use BillingPages\Core\Database;
-use BillingPages\Core\Session;
-use BillingPages\Core\Localization;
-
 /**
- * Work Controller - Handles work billing operations
+ * Work Controller - Handles work time tracking and billing
  */
-class WorkController
+class WorkController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
     public function __construct()
     {
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
-
+        parent::__construct();
+        
         // Check authentication
         if (!$this->session->isAuthenticated()) {
             header('Location: /');
@@ -29,7 +19,7 @@ class WorkController
     }
 
     /**
-     * Show work billing index
+     * Show work index
      */
     public function index(): void
     {
@@ -41,10 +31,14 @@ class WorkController
      */
     public function showAdd(): void
     {
+        // Get companies for dropdown
+        $userId = $this->session->getUserId();
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+
         $this->render('work/add', [
             'title' => $this->localization->get('add') . ' ' . $this->localization->get('work'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization
+            'companies' => $companies
         ]);
     }
 
@@ -56,16 +50,15 @@ class WorkController
         $userId = $this->session->getUserId();
         
         // Validate input
+        $companyId = (int)($_POST['company_id'] ?? 0);
         $workDate = trim($_POST['work_date'] ?? '');
         $workHours = (float)($_POST['work_hours'] ?? 0);
+        $workRate = (float)($_POST['work_rate'] ?? 0);
         $workDescription = trim($_POST['work_description'] ?? '');
         $workType = trim($_POST['work_type'] ?? '');
-        $workRate = (float)($_POST['work_rate'] ?? 0);
-        $workProject = trim($_POST['work_project'] ?? '');
-        $workClient = trim($_POST['work_client'] ?? '');
 
-        if (empty($workDate) || $workHours <= 0) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('work_date') . '/' . $this->localization->get('work_hours')]));
+        if (empty($companyId) || empty($workDate) || $workHours <= 0) {
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
             header('Location: /work/add');
             exit;
         }
@@ -74,14 +67,13 @@ class WorkController
         $workTotal = $workHours * $workRate;
 
         // Insert work entry
-        $sql = "INSERT INTO work_entries (user_id, work_date, work_hours, work_description, work_type, 
-                work_rate, work_total, work_project, work_client, status) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')";
+        $sql = "INSERT INTO work_entries (user_id, company_id, work_date, work_hours, work_rate, 
+                work_total, work_description, work_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         
         try {
             $this->database->execute($sql, [
-                $userId, $workDate, $workHours, $workDescription, $workType,
-                $workRate, $workTotal, $workProject, $workClient
+                $userId, $companyId, $workDate, $workHours, $workRate, 
+                $workTotal, $workDescription, $workType
             ]);
 
             $this->session->setFlash('success', $this->localization->get('success_saved'));
@@ -104,64 +96,25 @@ class WorkController
         $limit = 20;
         $offset = ($page - 1) * $limit;
 
-        // Get filters
-        $month = $_GET['month'] ?? '';
-        $project = $_GET['project'] ?? '';
-        $status = $_GET['status'] ?? '';
-
-        // Build WHERE clause
-        $whereConditions = ['user_id = ?'];
-        $params = [$userId];
-
-        if (!empty($month) && $month !== 'all') {
-            $whereConditions[] = 'DATE_FORMAT(work_date, "%Y-%m") = ?';
-            $params[] = $month;
-        }
-
-        if (!empty($project) && $project !== 'all') {
-            $whereConditions[] = 'work_project = ?';
-            $params[] = $project;
-        }
-
-        if (!empty($status) && $status !== 'all') {
-            $whereConditions[] = 'status = ?';
-            $params[] = $status;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        // Get work entries with pagination
-        $sql = "SELECT * FROM work_entries WHERE {$whereClause} ORDER BY work_date DESC LIMIT ? OFFSET ?";
-        $params[] = $limit;
-        $params[] = $offset;
-        $workEntries = $this->database->query($sql, $params);
+        // Get work entries with company info and pagination
+        $sql = "SELECT w.*, c.company_name FROM work_entries w 
+                LEFT JOIN companies c ON w.company_id = c.id 
+                WHERE w.user_id = ? ORDER BY w.work_date DESC LIMIT ? OFFSET ?";
+        $workEntries = $this->database->query($sql, [$userId, $limit, $offset]);
 
         // Get total count for pagination
-        $countSql = "SELECT COUNT(*) as total FROM work_entries WHERE {$whereClause}";
-        $totalResult = $this->database->queryOne($countSql, array_slice($params, 0, -2));
+        $countSql = "SELECT COUNT(*) as total FROM work_entries WHERE user_id = ?";
+        $totalResult = $this->database->queryOne($countSql, [$userId]);
         $total = $totalResult['total'] ?? 0;
         $totalPages = ceil($total / $limit);
 
-        // Get available months and projects for filters
-        $months = $this->getAvailableMonths($userId);
-        $projects = $this->getAvailableProjects($userId);
-
         $this->render('work/overview', [
             'title' => $this->localization->get('work') . ' - ' . $this->localization->get('overview'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'workEntries' => $workEntries,
             'pagination' => [
                 'current' => $page,
                 'total' => $totalPages,
                 'total_records' => $total
-            ],
-            'filters' => [
-                'month' => $month,
-                'project' => $project,
-                'status' => $status,
-                'months' => $months,
-                'projects' => $projects
             ]
         ]);
     }
@@ -176,28 +129,20 @@ class WorkController
         // Get date range filters
         $fromDate = $_GET['from_date'] ?? date('Y-m-01');
         $toDate = $_GET['to_date'] ?? date('Y-m-t');
-        $project = $_GET['project'] ?? '';
 
         // Get work statistics
-        $stats = $this->getWorkStats($userId, $fromDate, $toDate, $project);
+        $stats = $this->getWorkStats($userId, $fromDate, $toDate);
         
-        // Get work entries for reporting
-        $workEntries = $this->getWorkEntriesForReport($userId, $fromDate, $toDate, $project);
-
-        // Get projects for filter
-        $projects = $this->getAvailableProjects($userId);
+        // Get work entries with company info
+        $workEntries = $this->getWorkEntriesWithCompany($userId, $fromDate, $toDate);
 
         $this->render('work/reports', [
             'title' => $this->localization->get('work') . ' - ' . $this->localization->get('reports'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'stats' => $stats,
             'workEntries' => $workEntries,
             'filters' => [
                 'from_date' => $fromDate,
-                'to_date' => $toDate,
-                'project' => $project,
-                'projects' => $projects
+                'to_date' => $toDate
             ]
         ]);
     }
@@ -205,130 +150,72 @@ class WorkController
     /**
      * Get work statistics
      */
-    private function getWorkStats(int $userId, string $fromDate, string $toDate, string $project = ''): array
+    private function getWorkStats(int $userId, string $fromDate, string $toDate): array
     {
         $stats = [];
 
-        // Build WHERE clause
-        $whereConditions = ['user_id = ?', 'work_date BETWEEN ? AND ?'];
-        $params = [$userId, $fromDate, $toDate];
-
-        if (!empty($project)) {
-            $whereConditions[] = 'work_project = ?';
-            $params[] = $project;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        // Total hours
-        $sql = "SELECT SUM(work_hours) as total FROM work_entries WHERE {$whereClause}";
-        $result = $this->database->queryOne($sql, $params);
+        // Total work hours
+        $sql = "SELECT SUM(work_hours) as total FROM work_entries 
+                WHERE user_id = ? AND work_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_hours'] = $result['total'] ?? 0;
 
         // Total earnings
-        $sql = "SELECT SUM(work_total) as total FROM work_entries WHERE {$whereClause}";
-        $result = $this->database->queryOne($sql, $params);
+        $sql = "SELECT SUM(work_total) as total FROM work_entries 
+                WHERE user_id = ? AND work_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_earnings'] = $result['total'] ?? 0;
 
         // Average hourly rate
-        $sql = "SELECT AVG(work_rate) as avg_rate FROM work_entries WHERE {$whereClause} AND work_rate > 0";
-        $result = $this->database->queryOne($sql, $params);
+        $sql = "SELECT AVG(work_rate) as avg_rate FROM work_entries 
+                WHERE user_id = ? AND work_date BETWEEN ? AND ? AND work_rate > 0";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['avg_hourly_rate'] = $result['avg_rate'] ?? 0;
 
-        // Total entries
-        $sql = "SELECT COUNT(*) as total FROM work_entries WHERE {$whereClause}";
-        $result = $this->database->queryOne($sql, $params);
+        // Work entries count
+        $sql = "SELECT COUNT(*) as total FROM work_entries 
+                WHERE user_id = ? AND work_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_entries'] = $result['total'] ?? 0;
 
         return $stats;
     }
 
     /**
-     * Get work entries for reporting
+     * Get work entries with company info
      */
-    private function getWorkEntriesForReport(int $userId, string $fromDate, string $toDate, string $project = ''): array
+    private function getWorkEntriesWithCompany(int $userId, string $fromDate, string $toDate): array
     {
-        $whereConditions = ['user_id = ?', 'work_date BETWEEN ? AND ?'];
-        $params = [$userId, $fromDate, $toDate];
-
-        if (!empty($project)) {
-            $whereConditions[] = 'work_project = ?';
-            $params[] = $project;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        $sql = "SELECT * FROM work_entries WHERE {$whereClause} ORDER BY work_date DESC";
-        return $this->database->query($sql, $params);
+        $sql = "SELECT w.*, c.company_name FROM work_entries w 
+                LEFT JOIN companies c ON w.company_id = c.id 
+                WHERE w.user_id = ? AND w.work_date BETWEEN ? AND ?
+                ORDER BY w.work_date DESC";
+        
+        return $this->database->query($sql, [$userId, $fromDate, $toDate]);
     }
 
     /**
-     * Get available months for filtering
-     */
-    private function getAvailableMonths(int $userId): array
-    {
-        $sql = "SELECT DISTINCT DATE_FORMAT(work_date, '%Y-%m') as month 
-                FROM work_entries WHERE user_id = ? ORDER BY month DESC";
-        $months = $this->database->query($sql, [$userId]);
-        
-        $result = [];
-        foreach ($months as $month) {
-            $date = \DateTime::createFromFormat('Y-m', $month['month']);
-            $result[$month['month']] = $date->format('F Y');
-        }
-        
-        return $result;
-    }
-
-    /**
-     * Get available projects for filtering
-     */
-    private function getAvailableProjects(int $userId): array
-    {
-        $sql = "SELECT DISTINCT work_project FROM work_entries 
-                WHERE user_id = ? AND work_project IS NOT NULL AND work_project != '' 
-                ORDER BY work_project";
-        $projects = $this->database->query($sql, [$userId]);
-        
-        $result = [];
-        foreach ($projects as $project) {
-            $result[$project['work_project']] = $project['work_project'];
-        }
-        
-        return $result;
-    }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
-    }
-
-    /**
-     * Show work entry details
+     * View work entry details
      */
     public function view(int $id): void
     {
         $userId = $this->session->getUserId();
         
-        // Get work entry details
-        $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ?";
-        $work = $this->database->queryOne($sql, [$id, $userId]);
+        // Get work entry with company info
+        $sql = "SELECT w.*, c.company_name FROM work_entries w 
+                LEFT JOIN companies c ON w.company_id = c.id 
+                WHERE w.id = ? AND w.user_id = ?";
+        $workEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$work) {
+        if (!$workEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /work/overview');
             exit;
         }
 
         $this->render('work/view', [
-            'title' => $work['work_description'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'work' => $work
+            'title' => $this->localization->get('work') . ' - ' . $workEntry['work_date'],
+            'workEntry' => $workEntry
         ]);
     }
 
@@ -339,21 +226,24 @@ class WorkController
     {
         $userId = $this->session->getUserId();
         
-        // Get work entry details
+        // Get work entry
         $sql = "SELECT * FROM work_entries WHERE id = ? AND user_id = ?";
-        $work = $this->database->queryOne($sql, [$id, $userId]);
+        $workEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$work) {
+        if (!$workEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /work/overview');
             exit;
         }
 
+        // Get companies for dropdown
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+
         $this->render('work/edit', [
             'title' => $this->localization->get('edit') . ' ' . $this->localization->get('work'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'work' => $work
+            'workEntry' => $workEntry,
+            'companies' => $companies
         ]);
     }
 
@@ -365,17 +255,15 @@ class WorkController
         $userId = $this->session->getUserId();
         
         // Validate input
+        $companyId = (int)($_POST['company_id'] ?? 0);
         $workDate = trim($_POST['work_date'] ?? '');
         $workHours = (float)($_POST['work_hours'] ?? 0);
+        $workRate = (float)($_POST['work_rate'] ?? 0);
         $workDescription = trim($_POST['work_description'] ?? '');
         $workType = trim($_POST['work_type'] ?? '');
-        $workRate = (float)($_POST['work_rate'] ?? 0);
-        $workProject = trim($_POST['work_project'] ?? '');
-        $workClient = trim($_POST['work_client'] ?? '');
-        $status = trim($_POST['status'] ?? 'pending');
 
-        if (empty($workDate) || $workHours <= 0) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('work_date') . '/' . $this->localization->get('work_hours')]));
+        if (empty($companyId) || empty($workDate) || $workHours <= 0) {
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
             header('Location: /work/edit/' . $id);
             exit;
         }
@@ -384,18 +272,18 @@ class WorkController
         $workTotal = $workHours * $workRate;
 
         // Update work entry
-        $sql = "UPDATE work_entries SET work_date = ?, work_hours = ?, work_description = ?, 
-                work_type = ?, work_rate = ?, work_total = ?, work_project = ?, work_client = ?, 
-                status = ?, updated_at = NOW() WHERE id = ? AND user_id = ?";
+        $sql = "UPDATE work_entries SET company_id = ?, work_date = ?, work_hours = ?, 
+                work_rate = ?, work_total = ?, work_description = ?, work_type = ? 
+                WHERE id = ? AND user_id = ?";
         
         try {
             $this->database->execute($sql, [
-                $workDate, $workHours, $workDescription, $workType, $workRate,
-                $workTotal, $workProject, $workClient, $status, $id, $userId
+                $companyId, $workDate, $workHours, $workRate, $workTotal, 
+                $workDescription, $workType, $id, $userId
             ]);
 
             $this->session->setFlash('success', $this->localization->get('success_updated'));
-            header('Location: /work/overview');
+            header('Location: /work/view/' . $id);
             exit;
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_update'));
@@ -413,19 +301,19 @@ class WorkController
         
         // Check if work entry exists and belongs to user
         $sql = "SELECT id FROM work_entries WHERE id = ? AND user_id = ?";
-        $work = $this->database->queryOne($sql, [$id, $userId]);
+        $workEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$work) {
+        if (!$workEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /work/overview');
             exit;
         }
 
         // Delete work entry
-        $sql = "DELETE FROM work_entries WHERE id = ? AND user_id = ?";
-        
         try {
+            $sql = "DELETE FROM work_entries WHERE id = ? AND user_id = ?";
             $this->database->execute($sql, [$id, $userId]);
+            
             $this->session->setFlash('success', $this->localization->get('success_deleted'));
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_delete'));
@@ -436,29 +324,27 @@ class WorkController
     }
 
     /**
-     * Search work entries via API
+     * Search work entries
      */
     public function search(): void
     {
-        header('Content-Type: application/json');
-        
         $userId = $this->session->getUserId();
         $query = trim($_POST['query'] ?? '');
         
         if (empty($query)) {
-            echo json_encode(['success' => true, 'data' => []]);
-            return;
+            $this->jsonResponse(['success' => false, 'message' => 'Query is required']);
         }
 
-        $sql = "SELECT id, work_description, work_hours, work_total, work_date, work_project 
-                FROM work_entries 
-                WHERE user_id = ? AND (work_description LIKE ? OR work_project LIKE ? OR work_client LIKE ?)
-                ORDER BY work_date DESC 
+        $sql = "SELECT w.id, w.work_date, w.work_hours, w.work_total, w.work_description, c.company_name 
+                FROM work_entries w 
+                LEFT JOIN companies c ON w.company_id = c.id 
+                WHERE w.user_id = ? AND (w.work_description LIKE ? OR c.company_name LIKE ?)
+                ORDER BY w.work_date DESC 
                 LIMIT 10";
         
         $searchTerm = "%{$query}%";
-        $workEntries = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        $results = $this->database->query($sql, [$userId, $searchTerm, $searchTerm]);
         
-        echo json_encode(['success' => true, 'data' => $workEntries]);
+        $this->jsonResponse(['success' => true, 'data' => $results]);
     }
 } 

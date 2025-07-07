@@ -11,18 +11,10 @@ use BillingPages\Core\Localization;
  */
 class DashboardController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
     public function __construct()
     {
         parent::__construct();
         
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
-
         // Check authentication
         if (!$this->session->isAuthenticated()) {
             header('Location: /');
@@ -176,14 +168,5 @@ class DashboardController extends BaseController
         $chartData = $this->getChartData($userId);
         
         echo json_encode(['success' => true, 'data' => $chartData]);
-    }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
     }
 } 

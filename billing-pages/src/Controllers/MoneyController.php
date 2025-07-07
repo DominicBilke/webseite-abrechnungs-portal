@@ -7,20 +7,14 @@ use BillingPages\Core\Session;
 use BillingPages\Core\Localization;
 
 /**
- * Money Controller - Handles money billing operations
+ * Money Controller - Handles money tracking and expenses
  */
-class MoneyController
+class MoneyController extends BaseController
 {
-    private Database $database;
-    private Session $session;
-    private Localization $localization;
-
     public function __construct()
     {
-        $this->database = Database::getInstance();
-        $this->session = new Session();
-        $this->localization = new Localization();
-
+        parent::__construct();
+        
         // Check authentication
         if (!$this->session->isAuthenticated()) {
             header('Location: /');
@@ -29,7 +23,7 @@ class MoneyController
     }
 
     /**
-     * Show money billing index
+     * Show money index
      */
     public function index(): void
     {
@@ -41,10 +35,14 @@ class MoneyController
      */
     public function showAdd(): void
     {
+        // Get companies for dropdown
+        $userId = $this->session->getUserId();
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+
         $this->render('money/add', [
             'title' => $this->localization->get('add') . ' ' . $this->localization->get('money'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization
+            'companies' => $companies
         ]);
     }
 
@@ -56,31 +54,26 @@ class MoneyController
         $userId = $this->session->getUserId();
         
         // Validate input
+        $companyId = (int)($_POST['company_id'] ?? 0);
+        $paymentDate = trim($_POST['payment_date'] ?? '');
         $amount = (float)($_POST['amount'] ?? 0);
-        $currency = trim($_POST['currency'] ?? 'EUR');
         $description = trim($_POST['description'] ?? '');
-        $paymentMethod = trim($_POST['payment_method'] ?? '');
-        $paymentDate = trim($_POST['payment_date'] ?? date('Y-m-d'));
-        $paymentStatus = trim($_POST['payment_status'] ?? 'pending');
+        $type = trim($_POST['type'] ?? 'income');
         $category = trim($_POST['category'] ?? '');
-        $reference = trim($_POST['reference'] ?? '');
-        $notes = trim($_POST['notes'] ?? '');
 
-        if ($amount == 0 || empty($description)) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('amount') . '/' . $this->localization->get('description')]));
+        if (empty($paymentDate) || $amount == 0) {
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
             header('Location: /money/add');
             exit;
         }
 
         // Insert money entry
-        $sql = "INSERT INTO money_entries (user_id, amount, currency, description, payment_method, 
-                payment_date, payment_status, category, reference, notes) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        $sql = "INSERT INTO money_entries (user_id, company_id, payment_date, amount, description, type, category) 
+                VALUES (?, ?, ?, ?, ?, ?, ?)";
         
         try {
             $this->database->execute($sql, [
-                $userId, $amount, $currency, $description, $paymentMethod,
-                $paymentDate, $paymentStatus, $category, $reference, $notes
+                $userId, $companyId, $paymentDate, $amount, $description, $type, $category
             ]);
 
             $this->session->setFlash('success', $this->localization->get('success_saved'));
@@ -103,64 +96,25 @@ class MoneyController
         $limit = 20;
         $offset = ($page - 1) * $limit;
 
-        // Get filters
-        $month = $_GET['month'] ?? '';
-        $category = $_GET['category'] ?? '';
-        $status = $_GET['status'] ?? '';
-
-        // Build WHERE clause
-        $whereConditions = ['user_id = ?'];
-        $params = [$userId];
-
-        if (!empty($month) && $month !== 'all') {
-            $whereConditions[] = 'DATE_FORMAT(payment_date, "%Y-%m") = ?';
-            $params[] = $month;
-        }
-
-        if (!empty($category) && $category !== 'all') {
-            $whereConditions[] = 'category = ?';
-            $params[] = $category;
-        }
-
-        if (!empty($status) && $status !== 'all') {
-            $whereConditions[] = 'payment_status = ?';
-            $params[] = $status;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        // Get money entries with pagination
-        $sql = "SELECT * FROM money_entries WHERE {$whereClause} ORDER BY payment_date DESC LIMIT ? OFFSET ?";
-        $params[] = $limit;
-        $params[] = $offset;
-        $moneyEntries = $this->database->query($sql, $params);
+        // Get money entries with company info and pagination
+        $sql = "SELECT m.*, c.company_name FROM money_entries m 
+                LEFT JOIN companies c ON m.company_id = c.id 
+                WHERE m.user_id = ? ORDER BY m.payment_date DESC LIMIT ? OFFSET ?";
+        $moneyEntries = $this->database->query($sql, [$userId, $limit, $offset]);
 
         // Get total count for pagination
-        $countSql = "SELECT COUNT(*) as total FROM money_entries WHERE {$whereClause}";
-        $totalResult = $this->database->queryOne($countSql, array_slice($params, 0, -2));
+        $countSql = "SELECT COUNT(*) as total FROM money_entries WHERE user_id = ?";
+        $totalResult = $this->database->queryOne($countSql, [$userId]);
         $total = $totalResult['total'] ?? 0;
         $totalPages = ceil($total / $limit);
 
-        // Get available months and categories for filters
-        $months = $this->getAvailableMonths($userId);
-        $categories = $this->getAvailableCategories($userId);
-
         $this->render('money/overview', [
             'title' => $this->localization->get('money') . ' - ' . $this->localization->get('overview'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'moneyEntries' => $moneyEntries,
             'pagination' => [
                 'current' => $page,
                 'total' => $totalPages,
                 'total_records' => $total
-            ],
-            'filters' => [
-                'month' => $month,
-                'category' => $category,
-                'status' => $status,
-                'months' => $months,
-                'categories' => $categories
             ]
         ]);
     }
@@ -175,28 +129,20 @@ class MoneyController
         // Get date range filters
         $fromDate = $_GET['from_date'] ?? date('Y-m-01');
         $toDate = $_GET['to_date'] ?? date('Y-m-t');
-        $category = $_GET['category'] ?? '';
 
         // Get money statistics
-        $stats = $this->getMoneyStats($userId, $fromDate, $toDate, $category);
+        $stats = $this->getMoneyStats($userId, $fromDate, $toDate);
         
-        // Get money entries for reporting
-        $moneyEntries = $this->getMoneyEntriesForReport($userId, $fromDate, $toDate, $category);
-
-        // Get categories for filter
-        $categories = $this->getAvailableCategories($userId);
+        // Get money entries with company info
+        $moneyEntries = $this->getMoneyEntriesWithCompany($userId, $fromDate, $toDate);
 
         $this->render('money/reports', [
             'title' => $this->localization->get('money') . ' - ' . $this->localization->get('reports'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
             'stats' => $stats,
             'moneyEntries' => $moneyEntries,
             'filters' => [
                 'from_date' => $fromDate,
-                'to_date' => $toDate,
-                'category' => $category,
-                'categories' => $categories
+                'to_date' => $toDate
             ]
         ]);
     }
@@ -204,135 +150,69 @@ class MoneyController
     /**
      * Get money statistics
      */
-    private function getMoneyStats(int $userId, string $fromDate, string $toDate, string $category = ''): array
+    private function getMoneyStats(int $userId, string $fromDate, string $toDate): array
     {
         $stats = [];
 
-        // Build WHERE clause
-        $whereConditions = ['user_id = ?', 'payment_date BETWEEN ? AND ?'];
-        $params = [$userId, $fromDate, $toDate];
-
-        if (!empty($category)) {
-            $whereConditions[] = 'category = ?';
-            $params[] = $category;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
         // Total income
-        $sql = "SELECT SUM(amount) as total FROM money_entries WHERE {$whereClause} AND amount > 0";
-        $result = $this->database->queryOne($sql, $params);
+        $sql = "SELECT SUM(amount) as total FROM money_entries 
+                WHERE user_id = ? AND type = 'income' AND payment_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_income'] = $result['total'] ?? 0;
 
         // Total expenses
-        $sql = "SELECT SUM(ABS(amount)) as total FROM money_entries WHERE {$whereClause} AND amount < 0";
-        $result = $this->database->queryOne($sql, $params);
+        $sql = "SELECT SUM(amount) as total FROM money_entries 
+                WHERE user_id = ? AND type = 'expense' AND payment_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_expenses'] = $result['total'] ?? 0;
 
         // Net amount
-        $sql = "SELECT SUM(amount) as total FROM money_entries WHERE {$whereClause}";
-        $result = $this->database->queryOne($sql, $params);
-        $stats['net_amount'] = $result['total'] ?? 0;
-
-        // Pending amount
-        $sql = "SELECT SUM(amount) as total FROM money_entries WHERE {$whereClause} AND payment_status = 'pending'";
-        $result = $this->database->queryOne($sql, $params);
-        $stats['pending_amount'] = $result['total'] ?? 0;
+        $stats['net_amount'] = $stats['total_income'] - $stats['total_expenses'];
 
         // Total entries
-        $sql = "SELECT COUNT(*) as total FROM money_entries WHERE {$whereClause}";
-        $result = $this->database->queryOne($sql, $params);
+        $sql = "SELECT COUNT(*) as total FROM money_entries 
+                WHERE user_id = ? AND payment_date BETWEEN ? AND ?";
+        $result = $this->database->queryOne($sql, [$userId, $fromDate, $toDate]);
         $stats['total_entries'] = $result['total'] ?? 0;
 
         return $stats;
     }
 
     /**
-     * Get money entries for reporting
+     * Get money entries with company info
      */
-    private function getMoneyEntriesForReport(int $userId, string $fromDate, string $toDate, string $category = ''): array
+    private function getMoneyEntriesWithCompany(int $userId, string $fromDate, string $toDate): array
     {
-        $whereConditions = ['user_id = ?', 'payment_date BETWEEN ? AND ?'];
-        $params = [$userId, $fromDate, $toDate];
-
-        if (!empty($category)) {
-            $whereConditions[] = 'category = ?';
-            $params[] = $category;
-        }
-
-        $whereClause = implode(' AND ', $whereConditions);
-
-        $sql = "SELECT * FROM money_entries WHERE {$whereClause} ORDER BY payment_date DESC";
-        return $this->database->query($sql, $params);
+        $sql = "SELECT m.*, c.company_name FROM money_entries m 
+                LEFT JOIN companies c ON m.company_id = c.id 
+                WHERE m.user_id = ? AND m.payment_date BETWEEN ? AND ?
+                ORDER BY m.payment_date DESC";
+        
+        return $this->database->query($sql, [$userId, $fromDate, $toDate]);
     }
 
     /**
-     * Get available months for filtering
-     */
-    private function getAvailableMonths(int $userId): array
-    {
-        $sql = "SELECT DISTINCT DATE_FORMAT(payment_date, '%Y-%m') as month 
-                FROM money_entries WHERE user_id = ? ORDER BY month DESC";
-        $months = $this->database->query($sql, [$userId]);
-        
-        $result = [];
-        foreach ($months as $month) {
-            $date = \DateTime::createFromFormat('Y-m', $month['month']);
-            $result[$month['month']] = $date->format('F Y');
-        }
-        
-        return $result;
-    }
-
-    /**
-     * Get available categories for filtering
-     */
-    private function getAvailableCategories(int $userId): array
-    {
-        $sql = "SELECT DISTINCT category FROM money_entries 
-                WHERE user_id = ? AND category IS NOT NULL AND category != '' 
-                ORDER BY category";
-        $categories = $this->database->query($sql, [$userId]);
-        
-        $result = [];
-        foreach ($categories as $category) {
-            $result[$category['category']] = $category['category'];
-        }
-        
-        return $result;
-    }
-
-    /**
-     * Render a template
-     */
-    private function render(string $template, array $data = []): void
-    {
-        extract($data);
-        include __DIR__ . "/../../templates/{$template}.php";
-    }
-
-    /**
-     * Show money entry details
+     * View money entry details
      */
     public function view(int $id): void
     {
         $userId = $this->session->getUserId();
         
-        // Get money entry details
-        $sql = "SELECT * FROM money_entries WHERE id = ? AND user_id = ?";
-        $money = $this->database->queryOne($sql, [$id, $userId]);
+        // Get money entry with company info
+        $sql = "SELECT m.*, c.company_name FROM money_entries m 
+                LEFT JOIN companies c ON m.company_id = c.id 
+                WHERE m.id = ? AND m.user_id = ?";
+        $moneyEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$money) {
+        if (!$moneyEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /money/overview');
             exit;
         }
 
         $this->render('money/view', [
-            'title' => $money['description'],
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'money' => $money
+            'title' => $this->localization->get('money') . ' - ' . $moneyEntry['payment_date'],
+            'moneyEntry' => $moneyEntry
         ]);
     }
 
@@ -343,21 +223,24 @@ class MoneyController
     {
         $userId = $this->session->getUserId();
         
-        // Get money entry details
+        // Get money entry
         $sql = "SELECT * FROM money_entries WHERE id = ? AND user_id = ?";
-        $money = $this->database->queryOne($sql, [$id, $userId]);
+        $moneyEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$money) {
+        if (!$moneyEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /money/overview');
             exit;
         }
 
+        // Get companies for dropdown
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+
         $this->render('money/edit', [
             'title' => $this->localization->get('edit') . ' ' . $this->localization->get('money'),
-            'locale' => $this->localization->getLocale(),
-            'localization' => $this->localization,
-            'money' => $money
+            'moneyEntry' => $moneyEntry,
+            'companies' => $companies
         ]);
     }
 
@@ -369,35 +252,30 @@ class MoneyController
         $userId = $this->session->getUserId();
         
         // Validate input
+        $companyId = (int)($_POST['company_id'] ?? 0);
+        $paymentDate = trim($_POST['payment_date'] ?? '');
         $amount = (float)($_POST['amount'] ?? 0);
-        $currency = trim($_POST['currency'] ?? 'EUR');
         $description = trim($_POST['description'] ?? '');
-        $paymentMethod = trim($_POST['payment_method'] ?? '');
-        $paymentDate = trim($_POST['payment_date'] ?? date('Y-m-d'));
-        $paymentStatus = trim($_POST['payment_status'] ?? 'pending');
+        $type = trim($_POST['type'] ?? 'income');
         $category = trim($_POST['category'] ?? '');
-        $reference = trim($_POST['reference'] ?? '');
-        $notes = trim($_POST['notes'] ?? '');
 
-        if ($amount == 0 || empty($description)) {
-            $this->session->setFlash('error', $this->localization->get('validation_required', ['field' => $this->localization->get('amount') . '/' . $this->localization->get('description')]));
+        if (empty($paymentDate) || $amount == 0) {
+            $this->session->setFlash('error', $this->localization->get('validation_required'));
             header('Location: /money/edit/' . $id);
             exit;
         }
 
         // Update money entry
-        $sql = "UPDATE money_entries SET amount = ?, currency = ?, description = ?, payment_method = ?, 
-                payment_date = ?, payment_status = ?, category = ?, reference = ?, notes = ?, 
-                updated_at = NOW() WHERE id = ? AND user_id = ?";
+        $sql = "UPDATE money_entries SET company_id = ?, payment_date = ?, amount = ?, 
+                description = ?, type = ?, category = ? WHERE id = ? AND user_id = ?";
         
         try {
             $this->database->execute($sql, [
-                $amount, $currency, $description, $paymentMethod, $paymentDate,
-                $paymentStatus, $category, $reference, $notes, $id, $userId
+                $companyId, $paymentDate, $amount, $description, $type, $category, $id, $userId
             ]);
 
             $this->session->setFlash('success', $this->localization->get('success_updated'));
-            header('Location: /money/overview');
+            header('Location: /money/view/' . $id);
             exit;
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_update'));
@@ -415,19 +293,19 @@ class MoneyController
         
         // Check if money entry exists and belongs to user
         $sql = "SELECT id FROM money_entries WHERE id = ? AND user_id = ?";
-        $money = $this->database->queryOne($sql, [$id, $userId]);
+        $moneyEntry = $this->database->queryOne($sql, [$id, $userId]);
         
-        if (!$money) {
+        if (!$moneyEntry) {
             $this->session->setFlash('error', $this->localization->get('error_not_found'));
             header('Location: /money/overview');
             exit;
         }
 
         // Delete money entry
-        $sql = "DELETE FROM money_entries WHERE id = ? AND user_id = ?";
-        
         try {
+            $sql = "DELETE FROM money_entries WHERE id = ? AND user_id = ?";
             $this->database->execute($sql, [$id, $userId]);
+            
             $this->session->setFlash('success', $this->localization->get('success_deleted'));
         } catch (\Exception $e) {
             $this->session->setFlash('error', $this->localization->get('error_delete'));
@@ -438,29 +316,27 @@ class MoneyController
     }
 
     /**
-     * Search money entries via API
+     * Search money entries
      */
     public function search(): void
     {
-        header('Content-Type: application/json');
-        
         $userId = $this->session->getUserId();
         $query = trim($_POST['query'] ?? '');
         
         if (empty($query)) {
-            echo json_encode(['success' => true, 'data' => []]);
-            return;
+            $this->jsonResponse(['success' => false, 'message' => 'Query is required']);
         }
 
-        $sql = "SELECT id, description, amount, payment_date, category, payment_status 
-                FROM money_entries 
-                WHERE user_id = ? AND (description LIKE ? OR category LIKE ? OR reference LIKE ?)
-                ORDER BY payment_date DESC 
+        $sql = "SELECT m.id, m.payment_date, m.amount, m.description, m.type, c.company_name 
+                FROM money_entries m 
+                LEFT JOIN companies c ON m.company_id = c.id 
+                WHERE m.user_id = ? AND (m.description LIKE ? OR c.company_name LIKE ?)
+                ORDER BY m.payment_date DESC 
                 LIMIT 10";
         
         $searchTerm = "%{$query}%";
-        $moneyEntries = $this->database->query($sql, [$userId, $searchTerm, $searchTerm, $searchTerm]);
+        $results = $this->database->query($sql, [$userId, $searchTerm, $searchTerm]);
         
-        echo json_encode(['success' => true, 'data' => $moneyEntries]);
+        $this->jsonResponse(['success' => true, 'data' => $results]);
     }
 } 
