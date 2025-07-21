@@ -24,15 +24,66 @@ class BillingController extends BaseController
     }
 
     /**
-     * Show billing index
+     * Helper: Get invoice stats for the current user
      */
-    public function index(): void
+    private function getStats(int $userId): array
     {
-        $this->overview();
+        $stats = [
+            'total_invoices' => 0,
+            'total_amount' => 0.0,
+            'paid_invoices' => 0,
+            'pending_invoices' => 0
+        ];
+        try {
+            $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['total_invoices'] = $result['total'] ?? 0;
+
+            $sql = "SELECT SUM(total) as total_amount FROM invoices WHERE user_id = ?";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['total_amount'] = $result['total_amount'] ?? 0.0;
+
+            $sql = "SELECT COUNT(*) as paid FROM invoices WHERE user_id = ? AND status = 'paid'";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['paid_invoices'] = $result['paid'] ?? 0;
+
+            $sql = "SELECT COUNT(*) as pending FROM invoices WHERE user_id = ? AND status = 'draft'";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['pending_invoices'] = $result['pending'] ?? 0;
+        } catch (\Exception $e) {}
+        return $stats;
     }
 
     /**
-     * Show billing overview
+     * Show billing index (dashboard-style)
+     */
+    public function index(): void
+    {
+        $userId = $this->session->getUserId();
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 10;
+        $offset = ($page - 1) * $limit;
+        $sql = "SELECT i.*, c.company_name FROM invoices i LEFT JOIN companies c ON i.client_id = c.id WHERE i.user_id = ? ORDER BY i.invoice_date DESC LIMIT ? OFFSET ?";
+        $invoices = $this->database->query($sql, [$userId, $limit, $offset]);
+        $countSql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+        $totalResult = $this->database->queryOne($countSql, [$userId]);
+        $total = $totalResult['total'] ?? 0;
+        $totalPages = ceil($total / $limit);
+        $stats = $this->getStats($userId);
+        $this->render('billing/index', [
+            'title' => $this->localization->get('nav_billing'),
+            'invoices' => $invoices,
+            'pagination' => [
+                'current' => $page,
+                'total' => $totalPages,
+                'total_records' => $total
+            ],
+            'stats' => $stats
+        ]);
+    }
+
+    /**
+     * Show billing overview (list-style)
      */
     public function overview(): void
     {
@@ -40,19 +91,13 @@ class BillingController extends BaseController
         $page = (int)($_GET['page'] ?? 1);
         $limit = 20;
         $offset = ($page - 1) * $limit;
-
-        // Get invoices with company info and pagination
-        $sql = "SELECT i.*, c.company_name FROM invoices i 
-                LEFT JOIN companies c ON i.client_id = c.id 
-                WHERE i.user_id = ? ORDER BY i.invoice_date DESC LIMIT ? OFFSET ?";
+        $sql = "SELECT i.*, c.company_name FROM invoices i LEFT JOIN companies c ON i.client_id = c.id WHERE i.user_id = ? ORDER BY i.invoice_date DESC LIMIT ? OFFSET ?";
         $invoices = $this->database->query($sql, [$userId, $limit, $offset]);
-
-        // Get total count for pagination
         $countSql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
         $totalResult = $this->database->queryOne($countSql, [$userId]);
         $total = $totalResult['total'] ?? 0;
         $totalPages = ceil($total / $limit);
-
+        $stats = $this->getStats($userId);
         $this->render('billing/overview', [
             'title' => $this->localization->get('billing') . ' - ' . $this->localization->get('overview'),
             'invoices' => $invoices,
@@ -60,7 +105,36 @@ class BillingController extends BaseController
                 'current' => $page,
                 'total' => $totalPages,
                 'total_records' => $total
-            ]
+            ],
+            'stats' => $stats
+        ]);
+    }
+
+    /**
+     * Show all invoices (for /billing/all)
+     */
+    public function all(): void
+    {
+        $userId = $this->session->getUserId();
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = 50;
+        $offset = ($page - 1) * $limit;
+        $sql = "SELECT i.*, c.company_name FROM invoices i LEFT JOIN companies c ON i.client_id = c.id WHERE i.user_id = ? ORDER BY i.invoice_date DESC LIMIT ? OFFSET ?";
+        $invoices = $this->database->query($sql, [$userId, $limit, $offset]);
+        $countSql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+        $totalResult = $this->database->queryOne($countSql, [$userId]);
+        $total = $totalResult['total'] ?? 0;
+        $totalPages = ceil($total / $limit);
+        $stats = $this->getStats($userId);
+        $this->render('billing/all', [
+            'title' => $this->localization->get('all') . ' ' . $this->localization->get('invoices'),
+            'invoices' => $invoices,
+            'pagination' => [
+                'current' => $page,
+                'total' => $totalPages,
+                'total_records' => $total
+            ],
+            'stats' => $stats
         ]);
     }
 
@@ -70,22 +144,75 @@ class BillingController extends BaseController
     public function showCreate(): void
     {
         $userId = $this->session->getUserId();
-        
-        // Get companies for dropdown
         $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
         $companies = $this->database->query($sql, [$userId]);
-
-        // Get work entries for billing
-        $sql = "SELECT w.*, c.company_name FROM work_entries w 
-                LEFT JOIN companies c ON w.company_id = c.id 
-                WHERE w.user_id = ? AND w.billed = 0 
-                ORDER BY w.work_date DESC";
+        $sql = "SELECT w.*, c.company_name FROM work_entries w LEFT JOIN companies c ON w.company_id = c.id WHERE w.user_id = ? AND w.billed = 0 ORDER BY w.work_date DESC";
         $workEntries = $this->database->query($sql, [$userId]);
-
         $this->render('billing/create', [
             'title' => $this->localization->get('create') . ' ' . $this->localization->get('invoice'),
             'companies' => $companies,
             'workEntries' => $workEntries
+        ]);
+    }
+
+    /**
+     * Show edit invoice form
+     */
+    public function edit(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        $sql = "SELECT * FROM invoices WHERE id = ? AND user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing/overview');
+            exit;
+        }
+        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
+        $invoice_items = $this->database->query($sql, [$id]);
+        $this->render('billing/edit', [
+            'title' => $this->localization->get('edit') . ' ' . $this->localization->get('invoice'),
+            'invoice' => $invoice,
+            'invoice_items' => $invoice_items ?? []
+        ]);
+    }
+
+    /**
+     * Show invoice details
+     */
+    public function view(int $id): void
+    {
+        $userId = $this->session->getUserId();
+        $sql = "SELECT i.*, c.company_name, c.company_address, c.company_contact FROM invoices i LEFT JOIN companies c ON i.client_id = c.id WHERE i.id = ? AND i.user_id = ?";
+        $invoice = $this->database->queryOne($sql, [$id, $userId]);
+        if (!$invoice) {
+            $this->session->setFlash('error', $this->localization->get('error_not_found'));
+            header('Location: /billing/overview');
+            exit;
+        }
+        $sql = "SELECT * FROM invoice_items WHERE invoice_id = ?";
+        $invoice_items = $this->database->query($sql, [$id]);
+        $this->render('billing/view', [
+            'title' => $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
+            'invoice' => $invoice,
+            'invoice_items' => $invoice_items ?? []
+        ]);
+    }
+
+    /**
+     * Show generate invoice form (manual entry)
+     */
+    public function generate(): void
+    {
+        $userId = $this->session->getUserId();
+        $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+        $companies = $this->database->query($sql, [$userId]);
+        $default_invoice_number = $this->generateInvoiceNumber($userId);
+        $this->render('billing/generate', [
+            'title' => $this->localization->get('generate') . ' ' . $this->localization->get('invoice'),
+            'companies' => $companies,
+            'default_invoice_number' => $default_invoice_number,
+            'selected_client' => '',
         ]);
     }
 
@@ -177,37 +304,6 @@ class BillingController extends BaseController
         $count = ($result['count'] ?? 0) + 1;
         
         return "INV-{$year}-" . str_pad($count, 4, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * View invoice details
-     */
-    public function view(int $id): void
-    {
-        $userId = $this->session->getUserId();
-        
-        // Get invoice with company info
-        $sql = "SELECT i.*, c.company_name, c.company_address, c.company_contact 
-                FROM invoices i 
-                LEFT JOIN companies c ON i.client_id = c.id 
-                WHERE i.id = ? AND i.user_id = ?";
-        $invoice = $this->database->queryOne($sql, [$id, $userId]);
-        
-        if (!$invoice) {
-            $this->session->setFlash('error', $this->localization->get('error_not_found'));
-            header('Location: /billing/overview');
-            exit;
-        }
-
-        // Get work entries for this invoice
-        $sql = "SELECT * FROM work_entries WHERE invoice_id = ? AND user_id = ? ORDER BY work_date";
-        $workEntries = $this->database->query($sql, [$id, $userId]);
-
-        $this->render('billing/view', [
-            'title' => $this->localization->get('invoice') . ' ' . $invoice['invoice_number'],
-            'invoice' => $invoice,
-            'workEntries' => $workEntries
-        ]);
     }
 
     /**
@@ -439,5 +535,90 @@ class BillingController extends BaseController
         $results = $this->database->query($sql, [$userId, $searchTerm, $searchTerm]);
         
         $this->jsonResponse(['success' => true, 'data' => $results]);
+    }
+
+    /**
+     * AJAX: Get selectable items for invoice generation modal
+     */
+    public function data(string $type): void
+    {
+        $userId = $this->session->getUserId();
+        $data = [];
+        $success = true;
+        $error = '';
+        try {
+            switch ($type) {
+                case 'work':
+                    $sql = "SELECT id, work_description, work_total, work_date FROM work_entries WHERE user_id = ? AND billed = 0 ORDER BY work_date DESC";
+                    $data = $this->database->query($sql, [$userId]);
+                    break;
+                case 'company':
+                    $sql = "SELECT id, company_name FROM companies WHERE user_id = ? AND status = 'active' ORDER BY company_name";
+                    $data = $this->database->query($sql, [$userId]);
+                    break;
+                case 'tour':
+                    $sql = "SELECT id, tour_name, tour_total, tour_date FROM tours WHERE user_id = ? ORDER BY tour_date DESC";
+                    $data = $this->database->query($sql, [$userId]);
+                    break;
+                case 'task':
+                    $sql = "SELECT id, task_name, task_total FROM tasks WHERE user_id = ? ORDER BY task_due_date DESC";
+                    $data = $this->database->query($sql, [$userId]);
+                    break;
+                case 'money':
+                    $sql = "SELECT id, description, amount FROM money_entries WHERE user_id = ? ORDER BY payment_date DESC";
+                    $data = $this->database->query($sql, [$userId]);
+                    break;
+                default:
+                    $success = false;
+                    $error = 'Invalid type';
+            }
+        } catch (\Exception $e) {
+            $success = false;
+            $error = $e->getMessage();
+        }
+        $this->jsonResponse([
+            'success' => $success,
+            'data' => $data,
+            'error' => $error
+        ]);
+    }
+
+    /**
+     * AJAX: Get invoice statistics for dashboard/cards
+     */
+    public function stats(): void
+    {
+        $userId = $this->session->getUserId();
+        $stats = [
+            'total_invoices' => 0,
+            'total_amount' => 0.0,
+            'paid_invoices' => 0,
+            'pending_invoices' => 0
+        ];
+        try {
+            // Total invoices
+            $sql = "SELECT COUNT(*) as total FROM invoices WHERE user_id = ?";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['total_invoices'] = $result['total'] ?? 0;
+
+            // Total amount
+            $sql = "SELECT SUM(total) as total_amount FROM invoices WHERE user_id = ?";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['total_amount'] = $result['total_amount'] ?? 0.0;
+
+            // Paid invoices
+            $sql = "SELECT COUNT(*) as paid FROM invoices WHERE user_id = ? AND status = 'paid'";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['paid_invoices'] = $result['paid'] ?? 0;
+
+            // Pending invoices
+            $sql = "SELECT COUNT(*) as pending FROM invoices WHERE user_id = ? AND status = 'draft'";
+            $result = $this->database->queryOne($sql, [$userId]);
+            $stats['pending_invoices'] = $result['pending'] ?? 0;
+        } catch (\Exception $e) {
+            $this->jsonResponse(['success' => false, 'error' => $e->getMessage()]);
+            return;
+        }
+        $this->jsonResponse(['success' => true, 'data' => $stats]);
     }
 } 
